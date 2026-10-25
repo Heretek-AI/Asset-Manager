@@ -1,0 +1,15 @@
+version: "1.0"
+action:
+  name: Hello World
+  id: example::hello-world
+  version: 1
+  author: Heretek-AI
+  category: examples
+  type: python
+  description: Minimal action used by the test-suite and as a scaffold example.
+  script: hello_world.py
+  register:
+    file:
+      enable: true
+    folder:
+      enable: true
