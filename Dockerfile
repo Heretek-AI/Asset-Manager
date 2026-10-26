@@ -8,11 +8,17 @@ COPY native/*.go ./
 COPY native/web/ ./web/
 RUN CGO_ENABLED=0 go build -trimpath -o /out/assetmgrd .
 
-# ---- runtime: binary + Python host ----
+# ---- runtime: binary + Python host + headless Godot ----
 FROM debian:trixie-slim
+ARG GODOT_VERSION=4.3-stable
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 python3-yaml git ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get install -y --no-install-recommends python3 python3-yaml git ca-certificates curl unzip \
+  && rm -rf /var/lib/apt/lists/* \
+  && curl -sL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip" \
+  && unzip -q /tmp/godot.zip -d /tmp/godot-unzip \
+  && mv /tmp/godot-unzip/Godot_v*_linux.x86_64 /usr/local/bin/godot \
+  && chmod +x /usr/local/bin/godot \
+  && rm -rf /tmp/godot.zip /tmp/godot-unzip
 WORKDIR /app
 COPY assetmgr/ ./assetmgr/
 COPY anchorpoint/ ./anchorpoint/

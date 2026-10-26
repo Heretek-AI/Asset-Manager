@@ -49,6 +49,11 @@ docker compose up --build       # same, in a container (verified 2026-10-25:
                                 # image builds; /api/* and the UI respond)
 ```
 
+The image also ships headless Godot 4.3 (`godot` on PATH), so
+`godot::reimport` works inside the container: project volumes mount at
+`/work` and `--headless --import` runs against them (verified: `.godot/` +
+`.godot/imported/` are produced in-container).
+
 API: `GET /api/info|/api/actions|/api/validate|/api/status`,
 `POST /api/project-init|/api/run`. Every command also has a `--json` CLI
 form the binary consumes; see `docs/API.md`.
