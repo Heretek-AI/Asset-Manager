@@ -418,6 +418,18 @@ IMPORTER_PARAMS: dict[str, frozenset[str]] = {
         "generate_tangents", "scale_mesh", "offset_mesh", "optimize_mesh",
         "force_disable_mesh_compression",
     }),
+    "scene": frozenset({
+        "nodes/root_type", "nodes/root_name", "nodes/apply_root_scale",
+        "nodes/root_scale", "nodes/import_as_skeleton_bones",
+        "meshes/ensure_tangents", "meshes/generate_lods",
+        "meshes/create_shadow_meshes", "meshes/light_baking",
+        "meshes/lightmap_texel_size", "meshes/force_disable_compression",
+        "skins/use_named_skins", "animation/import", "animation/fps",
+        "animation/trimming", "animation/remove_immutable_tracks",
+        "animation/import_rest_as_RESET", "import_script/path",
+        "_subresources", "gltf/naming_version",
+        "gltf/embedded_image_handling",
+    }),
 }
 
 

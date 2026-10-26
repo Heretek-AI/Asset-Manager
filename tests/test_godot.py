@@ -257,11 +257,11 @@ def test_known_importer_params_are_harvested_not_guessed():
     assert len(wav) == 10  # real 4.3 output
     for importer, count in (("mp3", 5), ("oggvorbisstr", 5),
                             ("font_data_dynamic", 20),
-                            ("wavefront_obj", 5)):
+                            ("wavefront_obj", 5), ("scene", 21)):
         params = known_importer_params(importer)
         assert params is not None
         assert len(params) == count, (importer, params)
-    assert known_importer_params("scene") is None  # unobserved: no verdict
+    assert known_importer_params("not_a_real_importer") is None
 
 
 def test_validate_import_params():
@@ -275,8 +275,11 @@ def test_validate_import_params():
     assert validate_import_params("font_data_dynamic", {"hinting": 2}) == []
     assert validate_import_params(
         "wavefront_obj", {"scale_mesh": "Vector3(1, 1, 1)"}) == []
+    assert validate_import_params("scene", {"animation/fps": 30}) == []
+    assert validate_import_params("scene", {"loop": True}) == ["loop"]
     # unknown importer: absence of data is not evidence of a bad key
-    assert validate_import_params("scene", {"anything/at_all": 1}) == []
+    assert validate_import_params(
+        "not_a_real_importer", {"anything/at_all": 1}) == []
 
 
 def test_set_preset_warns_but_applies_unknown_keys(tmp_path, capsys):
