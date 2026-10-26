@@ -25,9 +25,10 @@ CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(kind);
 """
 
 
-def open_db(path: str | Path) -> sqlite3.Connection:
+def open_db(path: str | Path, *,
+            check_same_thread: bool = True) -> sqlite3.Connection:
     """Open (creating) the library database at *path*."""
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     return conn
