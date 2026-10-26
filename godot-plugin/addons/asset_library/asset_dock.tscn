@@ -1,0 +1,28 @@
+[gd_scene load_steps=2 format=3 uid="uid://bassetlibdock01"]
+
+[ext_resource type="Script" path="res://addons/asset_library/asset_dock.gd" id="1_dock"]
+
+[node name="AssetLibrary" type="VBoxContainer"]
+script = ExtResource("1_dock")
+
+[node name="URL" type="LineEdit" parent="." unique_name_in_owner=true]
+placeholder_text = "http://library:8081"
+
+[node name="Token" type="LineEdit" parent="." unique_name_in_owner=true]
+placeholder_text = "token"
+secret = true
+
+[node name="SearchRow" type="HBoxContainer" parent="."]
+
+[node name="Query" type="LineEdit" parent="SearchRow" unique_name_in_owner=true]
+placeholder_text = "search assets..."
+size_flags_horizontal = 3
+
+[node name="Go" type="Button" parent="SearchRow" unique_name_in_owner=true]
+text = "Search"
+
+[node name="Results" type="ItemList" parent="." unique_name_in_owner=true]
+size_flags_vertical = 3
+
+[node name="Download" type="Button" parent="." unique_name_in_owner=true]
+text = "Download selected"
