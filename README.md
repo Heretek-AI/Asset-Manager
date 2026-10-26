@@ -32,6 +32,13 @@ and a **Python automation API**.
 | ![Actions console](docs/screenshots/actions-console.png) | ![Project browser](docs/screenshots/project-browser.png) |
 | Run tab, discovery + one-click actions | Scan of the demo Godot project: import badges, params, live thumbnail |
 
+## Remote library (self-hosted)
+
+Publish once, download on demand: the `library` compose service hosts the
+team catalog (content-addressed blobs + token-auth API), and the
+`godot-plugin/` editor dock browses and pulls assets straight into
+`res://` — see [docs/REMOTE_LIBRARY.md](docs/REMOTE_LIBRARY.md).
+
 ## Quick start (Python host)
 
 ```bash

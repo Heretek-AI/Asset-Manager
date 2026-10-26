@@ -1,6 +1,6 @@
 [project]
 name = "asset-manager"
-version = "0.2.0"
+version = "0.3.0"
 description = "OSS asset manager: action-plugin host, git-first version control, Python automation API"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -71,4 +71,8 @@ curl -X POST localhost:8080/api/thumbnail \
 `assetmgr actions [--root] [--scope file]` · `validate` · `info` ·
 `project-init DIR --name N [--force]` · `run <action-id> [--path P]` ·
 `status [--path P]` (offline `git status`) · `project-scan <root>` (Godot
-asset inventory) · `thumbnail SRC [--out PNG]` (exit 3 = no engine).
+asset inventory) · `thumbnail SRC [--out PNG]` (exit 3 = no engine) ·
+`library-init DIR` · `library-push FILE --server URL --token T [--name N]
+[--kind K] [--importer I] [--params JSON] [--tags a,b]` ·
+`library-pull ID --out PATH --server URL --token T`
+(server/token also via `ASSETMGR_LIBRARY_URL` / `ASSETMGR_LIBRARY_TOKEN`).
