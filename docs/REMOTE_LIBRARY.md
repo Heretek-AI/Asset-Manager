@@ -46,12 +46,20 @@ Publish the other way with the `godot::publish-to-library` action
 - Token auth: one token per teammate, created locally against the DB file
   (plaintext shown once, only digests stored).
 - Revocation is instant (`library-token-revoke`); revoked tokens 401.
-  There are no roles — every live token reads and writes everything.
-- No TLS, no rate limiting. Fine on a LAN / VPN or behind a reverse proxy
-  that adds TLS — do not put 8081 directly on the internet.
+  There are no roles — every live token reads and writes every file.
+- TLS is built in, off by default. Pass `--tls-cert/--tls-key`
+  (or `ASSETMGR_LIBRARY_TLS_CERT/KEY`) with a PEM pair — self-signed is
+  fine on a LAN, use a real certificate (or a reverse proxy that
+  terminates for you) for anything internet-facing. Never serve plain
+  HTTP past your own network: clients fail closed against a TLS port
+  and vice versa.
 - Tokens live in `.env` (git-ignored; see `.env.example`) only as the
   *bootstrap* secret: on first start it seeds the `default` token, and is
   ignored once any token exists. Prefer per-user tokens after that.
+- Compose with TLS: mount your PEM pair and override the command, e.g.
+  volumes `["./certs:/certs:ro"]`, command
+  `["-m", "library", "--host", "0.0.0.0", "--port", "8081",
+  "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/key.pem"]`.
 - Rotate by revoking the name and creating a fresh one.
 - The server trusts its operator: anyone with the token can read and
   write every asset.

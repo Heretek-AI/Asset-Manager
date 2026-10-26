@@ -30,14 +30,24 @@ def build_parser() -> argparse.ArgumentParser:
                         "(or ASSETMGR_LIBRARY_TOKEN)")
     parser.add_argument("--max-upload-bytes", type=int,
                         default=DEFAULT_MAX_UPLOAD_BYTES)
+    parser.add_argument("--tls-cert", default="",
+                        help="TLS certificate file (enables HTTPS;"
+                        " or ASSETMGR_LIBRARY_TLS_CERT)")
+    parser.add_argument("--tls-key", default="",
+                        help="TLS private key file"
+                        " (or ASSETMGR_LIBRARY_TLS_KEY)")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     token = args.token or os.environ.get("ASSETMGR_LIBRARY_TOKEN", "")
+    tls_cert = args.tls_cert or os.environ.get("ASSETMGR_LIBRARY_TLS_CERT", "")
+    tls_key = args.tls_key or os.environ.get("ASSETMGR_LIBRARY_TLS_KEY", "")
     server = LibraryServer(args.store, args.db, token or None,
-                           max_upload_bytes=args.max_upload_bytes)
+                           max_upload_bytes=args.max_upload_bytes,
+                           tls_cert=tls_cert or None,
+                           tls_key=tls_key or None)
     from library import db as library_db
     names = [t["name"] for t in library_db.list_tokens(server.conn)]
     if not names:

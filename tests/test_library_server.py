@@ -1,6 +1,7 @@
 """Library HTTP API tests (spins a real server on an ephemeral port)."""
 
 import json
+import subprocess
 import threading
 import urllib.error
 import urllib.parse
@@ -100,3 +101,42 @@ def test_list_filters(tmp_path):
     assert [a["name"] for a in json.loads(body)["assets"]] == ["hero.png"]
     _, body = call(base, "/api/v1/assets", token=TOKEN, params={"q": "zzz"})
     assert json.loads(body)["assets"] == []
+
+
+def _self_signed_cert(path):
+    subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", str(path / "key.pem"), "-out", str(path / "cert.pem"),
+         "-days", "1", "-subj", "/CN=localhost"],
+        check=True, capture_output=True)
+    return str(path / "cert.pem"), str(path / "key.pem")
+
+
+def test_tls_serves_https(tmp_path):
+    import ssl as ssl_module
+
+    cert, key = _self_signed_cert(tmp_path)
+    server = LibraryServer(tmp_path / "store", tmp_path / "lib.db",
+                           token=TOKEN, tls_cert=cert, tls_key=key)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    server.ready.wait(timeout=10)
+    ctx = ssl_module._create_unverified_context()
+    req = urllib.request.Request(f"https://127.0.0.1:{server.port}/health")
+    with urllib.request.urlopen(req, context=ctx) as response:
+        assert response.status == 200
+        assert json.loads(response.read()) == {"ok": True}
+
+
+def test_tls_missing_files_raise(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        LibraryServer(tmp_path / "store", tmp_path / "lib.db",
+                      tls_cert=str(tmp_path / "nope.pem"),
+                      tls_key=str(tmp_path / "nope-key.pem"))
+
+
+def test_tls_half_configured_raises(tmp_path):
+    _self_signed_cert(tmp_path)
+    with pytest.raises(ValueError):
+        LibraryServer(tmp_path / "store", tmp_path / "lib.db",
+                      tls_cert=str(tmp_path / "cert.pem"))

@@ -12,6 +12,7 @@ import os
 import re
 import secrets
 import shutil
+import ssl
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -239,7 +240,16 @@ class LibraryServer:
     """A self-hosted asset library: blob store + metadata + HTTP API."""
 
     def __init__(self, store_root, db_path, token: str | None = None,
-                 max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES) -> None:
+                 max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES,
+                 tls_cert: str | None = None,
+                 tls_key: str | None = None) -> None:
+        if bool(tls_cert) != bool(tls_key):
+            raise ValueError("tls_cert and tls_key must be given together")
+        for path in (tls_cert, tls_key):
+            if path and not os.path.isfile(path):
+                raise FileNotFoundError(f"TLS file not found: {path}")
+        self.tls_cert = tls_cert
+        self.tls_key = tls_key
         os.makedirs(store_root, exist_ok=True)
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         self.store_root = str(store_root)
@@ -396,6 +406,11 @@ class LibraryServer:
         """Block serving; ``port=0`` picks an ephemeral port (see .port)."""
         self._httpd = ThreadingHTTPServer((host, port),
                                           _make_handler(self))
+        if self.tls_cert and self.tls_key:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(self.tls_cert, self.tls_key)
+            self._httpd.socket = context.wrap_socket(self._httpd.socket,
+                                                     server_side=True)
         self.port = self._httpd.server_address[1]
         self.ready.set()
         self._httpd.serve_forever()
