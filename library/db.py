@@ -53,10 +53,11 @@ def add_asset(conn: sqlite3.Connection, *, name: str, blob_sha256: str,
               params: dict | None = None,
               tags: list | None = None) -> int:
     """Insert one asset row; returns its id."""
+    placeholders = ",".join(["?"] * 7)
     cur = conn.execute(
         "INSERT INTO assets(name, blob_sha256, size_bytes, kind,"
         " godot_importer, params_json, tags_json)"
-        " VALUES(?,?,?,?,?,?,)",
+        f" VALUES ({placeholders})",
         (name, blob_sha256, size_bytes, kind, godot_importer,
          json.dumps(params or {}), json.dumps(tags or [])))
     conn.commit()
