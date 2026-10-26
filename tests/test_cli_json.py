@@ -194,6 +194,29 @@ def test_library_push_chunked_roundtrip(tmp_path, capsys):
     assert open(dest, "rb").read() == b"q" * 100
 
 
+def test_library_thumbnail_roundtrip(tmp_path, capsys):
+    import shutil
+    from test_library_server import TOKEN, start_server
+    if shutil.which("ffmpeg") is None and shutil.which("magick") is None:
+        pytest.skip("no thumbnail engine on PATH")
+    _, base = start_server(tmp_path / "srv")
+    source = _write_png(tmp_path / "hero.png")
+    code, created = _run_json(capsys, "library-push", source,
+                              "--server", base, "--token", TOKEN)
+    assert code == 0
+    out = str(tmp_path / "thumb.png")
+    code, thumb = _run_json(capsys, "library-thumbnail",
+                            str(created["id"]), "--out", out,
+                            "--server", base, "--token", TOKEN)
+    assert code == 0
+    with open(out, "rb") as handle:
+        assert handle.read(8) == b"\x89PNG\r\n\x1a\n"
+    code, missing = _run_json(capsys, "library-thumbnail", "999",
+                              "--out", out, "--server", base,
+                              "--token", TOKEN)
+    assert code == 1 and "404" in missing["error"]
+
+
 def test_library_token_lifecycle_against_server(tmp_path, capsys):
     from test_library_server import start_server
     db = str(tmp_path / "srv" / "lib.db")

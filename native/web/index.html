@@ -48,6 +48,16 @@ pre { background: #0c0e11; padding: 12px; border-radius: 6px; overflow: auto; }
 <table><thead><tr><th>Path</th><th>Size</th><th>Import</th><th>Details</th><th>Preview</th></tr></thead>
 <tbody id="scanrows"><tr><td colspan="5" class="muted">No scan yet.</td></tr></tbody></table>
 
+<h2>Library</h2>
+<div class="row">
+  <input id="libserver" placeholder="http://library:8081" size="26">
+  <input id="libtoken" placeholder="token" size="20" type="password">
+  <input id="libquery" placeholder="search..." size="20">
+  <button onclick="searchLibrary()">Search</button>
+</div>
+<table><thead><tr><th></th><th>ID</th><th>Name</th><th>Kind</th><th>Size</th><th>Tags</th></tr></thead>
+<tbody id="librows"><tr><td colspan="6" class="muted">Not connected.</td></tr></tbody></table>
+
 <h2>Status</h2>
 <div class="row">
   <input id="statuspath" placeholder="/path/to/project" size="34">
@@ -158,6 +168,72 @@ async function showThumb(root, resPath, cell, btn) {
   } finally {
     btn.disabled = false;
   }
+}
+function libBase() {
+  return document.getElementById('libserver').value.replace(/\/+$/, '');
+}
+function libHeaders() {
+  return {'Authorization':
+    'Bearer ' + document.getElementById('libtoken').value};
+}
+async function searchLibrary() {
+  const q = document.getElementById('libquery').value;
+  const tb = document.getElementById('librows');
+  tb.innerHTML = '';
+  let r;
+  try {
+    r = await fetch(libBase() + '/api/v1/assets' +
+      (q ? '?q=' + encodeURIComponent(q) : ''), {headers: libHeaders()});
+  } catch (e) {
+    tb.innerHTML = '<tr><td colspan="6" class="muted">Cannot reach library ' +
+      '(check server URL; the library allows cross-origin requests, ' +
+      'but https UI pages cannot fetch plain-http servers).</td></tr>';
+    return;
+  }
+  if (!r.ok) {
+    say({http: r.status, ...(await r.json().catch(() => ({})))});
+    tb.innerHTML = '<tr><td colspan="6" class="muted">Request failed.</td></tr>';
+    return;
+  }
+  const body = await r.json();
+  for (const a of body.assets) {
+    const tr = document.createElement('tr');
+    const thumbTd = document.createElement('td');
+    if (a.thumbnail_sha256) {
+      loadLibThumb(a.id, thumbTd);
+    } else {
+      thumbTd.innerHTML = '<span class="muted">—</span>';
+    }
+    const idTd = document.createElement('td');
+    idTd.textContent = a.id;
+    const nameTd = document.createElement('td');
+    nameTd.textContent = a.name;
+    const kindTd = document.createElement('td');
+    kindTd.textContent = a.kind;
+    const sizeTd = document.createElement('td');
+    sizeTd.textContent = fmtSize(a.size_bytes);
+    sizeTd.style.whiteSpace = 'nowrap';
+    const tagsTd = document.createElement('td');
+    tagsTd.textContent = (a.tags || []).join(', ');
+    tr.append(thumbTd, idTd, nameTd, kindTd, sizeTd, tagsTd);
+    tb.appendChild(tr);
+  }
+  if (!body.assets.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="muted">No assets found.</td></tr>';
+  }
+  say({library: libBase(), assets: body.assets.length});
+}
+async function loadLibThumb(id, cell) {
+  try {
+    const r = await fetch(libBase() + '/api/v1/assets/' + id + '/thumbnail',
+      {headers: libHeaders()});
+    if (!r.ok) return;
+    const img = document.createElement('img');
+    img.style.maxWidth = '96px';
+    img.loading = 'lazy';
+    img.src = URL.createObjectURL(await r.blob());
+    cell.replaceChildren(img);
+  } catch (e) { /* leave the cell empty */ }
 }
 function fmtSize(n) {
   if (n < 1024) return n + ' B';

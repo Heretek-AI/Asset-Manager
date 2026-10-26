@@ -8,7 +8,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-__all__ = ["LibraryError", "push", "pull", "upload_status"]
+__all__ = ["LibraryError", "push", "pull", "pull_thumbnail",
+           "upload_status"]
 
 #: Files at or above this size upload through the session protocol.
 CHUNK_ABOVE_BYTES = 64 << 20
@@ -91,6 +92,18 @@ def pull(server: str, token: str, asset_id: int, out_path: str) -> dict:
                             f"/api/v1/assets/{asset_id}/blob")
     if status != 200:
         raise LibraryError(f"download rejected: HTTP {status}", status=status)
+    with open(out_path, "wb") as handle:
+        handle.write(body)
+    return {"path": os.path.abspath(out_path), "size": len(body)}
+
+
+def pull_thumbnail(server: str, token: str, asset_id: int,
+                   out_path: str) -> dict:
+    """Download an asset's thumbnail PNG; raises LibraryError when absent."""
+    status, body = _request(server, token, "GET",
+                            f"/api/v1/assets/{asset_id}/thumbnail")
+    if status != 200:
+        raise LibraryError(f"no thumbnail: HTTP {status}", status=status)
     with open(out_path, "wb") as handle:
         handle.write(body)
     return {"path": os.path.abspath(out_path), "size": len(body)}

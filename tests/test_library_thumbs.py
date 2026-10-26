@@ -104,6 +104,7 @@ def test_image_upload_generates_thumbnail(tmp_path):
     status, headers, blob = _get(base, f"/api/v1/assets/{asset_id}/thumbnail")
     assert status == 200, blob[:100]
     assert headers.get("Content-Type") == "image/png"
+    assert headers.get("Access-Control-Allow-Origin") == "*"
     assert blob[:8] == b"\x89PNG\r\n\x1a\n"
 
 

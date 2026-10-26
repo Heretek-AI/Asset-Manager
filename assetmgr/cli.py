@@ -263,6 +263,21 @@ def _cmd_library_pull(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_library_thumbnail(args: argparse.Namespace) -> int:
+    from library.client import LibraryError, pull_thumbnail
+
+    try:
+        server, token = _library_endpoint(args)
+    except SystemExit as exc:
+        return _die(args, str(exc), 2)
+    try:
+        result = pull_thumbnail(server, token, args.asset_id, args.out)
+    except LibraryError as exc:
+        return _die(args, str(exc), 1)
+    _emit(args, f"thumbnail saved to {result['path']}", result)
+    return 0
+
+
 def _library_db(args: argparse.Namespace) -> str:
     return os.path.abspath(args.db or "library-data/library.db")
 
@@ -411,6 +426,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--token", default="")
     _add_json(p)
     p.set_defaults(func=_cmd_library_pull)
+
+    p = sub.add_parser("library-thumbnail",
+                       help="download an asset's thumbnail PNG")
+    p.add_argument("asset_id", type=int)
+    p.add_argument("--out", required=True)
+    p.add_argument("--server", default="")
+    p.add_argument("--token", default="")
+    _add_json(p)
+    p.set_defaults(func=_cmd_library_thumbnail)
 
     p = sub.add_parser("library-token-create",
                        help="create a library API token (printed once)")

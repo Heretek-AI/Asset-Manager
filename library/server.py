@@ -45,6 +45,19 @@ def _make_handler(lib: "LibraryServer") -> type[BaseHTTPRequestHandler]:
         def log_message(self, format: str, *args: object) -> None:
             pass  # keep test output clean; front with a real server for logs
 
+        def end_headers(self) -> None:
+            # Wide-open CORS: this is a self-hosted LAN tool whose web UI
+            # lives on another origin (assetmgrd). Auth still required.
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers",
+                             "Authorization, Content-Type")
+            super().end_headers()
+
+        def do_OPTIONS(self) -> None:
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.end_headers()
+
         # -- helpers ----------------------------------------------------
         def _json(self, code: int, payload: object) -> None:
             body = json.dumps(payload).encode()

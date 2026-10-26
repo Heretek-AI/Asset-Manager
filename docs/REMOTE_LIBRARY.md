@@ -19,9 +19,20 @@ The API is token-authenticated (`Authorization: Bearer <token>`):
 - `POST /api/v1/assets?name=&kind=&importer=&params={}&tags=` (raw body)
   — publish; replies `{"id", "blob_sha256"}` (dedupe is by content hash)
 - `GET /api/v1/assets/<id>/blob` — download bytes
+- `GET /api/v1/assets/<id>/thumbnail` — 320px PNG preview, or 404
+  `{"error": "no thumbnail"}` when the asset has none
+
+Thumbnails render server-side at publish time (either ingest path) via
+ffmpeg/ImageMagick when a suitable engine is installed — best effort:
+unsupported formats, or a server with no engine at all, simply get no
+thumbnail and everything else works. Asset listings carry
+`thumbnail_sha256` (null when absent). Databases from older releases
+gain the column automatically on first open; existing rows keep serving
+with no thumbnail until re-published.
 
 The same operations exist offline-first on the CLI:
-`assetmgr library-init|library-push|library-pull` (see `docs/API.md`).
+`assetmgr library-init|library-push|library-pull|library-thumbnail`
+(see `docs/API.md`).
 Uploads are capped at 2 GiB (`MAX_UPLOAD_BYTES`); for anything large use
 the session protocol — the CLI switches automatically above 64 MiB
 (`--chunk-above BYTES`), or force it with `library-push --chunked
@@ -35,7 +46,13 @@ abandoned sessions are swept on server start.
 2. Project → Project Settings → Plugins → enable **Asset Library**.
 3. Open the dock (left), enter server URL + token, Search, select, Download.
    Files land in `res://<name>` and the editor filesystem rescans, so
-   `.import` sidecars generate on the spot.
+   `.import` sidecars generate on the spot. Selecting a result also shows
+   its server-rendered thumbnail in the preview pane (blank when the
+   asset has none).
+4. The web UI (native binary / Docker) has a Library section that
+   searches the same catalog over HTTP (the server sends
+   `Access-Control-Allow-Origin: *`; auth still required) and shows the
+   thumbnails inline.
 
 Publish the other way with the `godot::publish-to-library` action
 (importer + params travel in the upload), or plain
