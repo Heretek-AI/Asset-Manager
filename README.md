@@ -54,9 +54,10 @@ The image also ships headless Godot 4.3 (`godot` on PATH), so
 `/work` and `--headless --import` runs against them (verified: `.godot/` +
 `.godot/imported/` are produced in-container).
 
-API: `GET /api/info|/api/actions|/api/validate|/api/status`,
-`POST /api/project-init|/api/run`. Every command also has a `--json` CLI
-form the binary consumes; see `docs/API.md`.
+API: `GET /api/info|/api/actions|/api/validate|/api/status|/api/scan`,
+`POST /api/project-init|/api/run|/api/thumbnail` (thumbnail returns
+`image/png` bytes; 404 unknown asset, 503 no engine). Every command also has
+a `--json` CLI form the binary consumes; see `docs/API.md`.
 
 ## Layout
 

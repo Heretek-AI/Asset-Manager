@@ -89,3 +89,55 @@ def test_status_json_not_a_checkout(tmp_path, capsys):
     code, payload = _run_json(capsys, "status", "--path", str(tmp_path))
     assert code == 1
     assert payload["error"] == "not a git checkout"
+
+
+ONE_PIXEL_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+def _write_png(path):
+    import base64
+    with open(path, "wb") as handle:
+        handle.write(base64.b64decode(ONE_PIXEL_PNG_B64))
+    return str(path)
+
+
+def _needs_engine():
+    import shutil
+    if shutil.which("ffmpeg") is None and shutil.which("magick") is None:
+        pytest.skip("no thumbnail engine (ffmpeg/magick) on PATH")
+
+
+def test_thumbnail_json_ok(tmp_path, capsys):
+    _needs_engine()
+    source = _write_png(tmp_path / "hero.png")
+    code, payload = _run_json(capsys, "thumbnail", source)
+    assert code == 0
+    assert payload["source"] == os.path.abspath(source)
+    assert os.path.exists(payload["destination"])
+    with open(payload["destination"], "rb") as handle:
+        assert handle.read(8) == b"\x89PNG\r\n\x1a\n"
+
+
+def test_thumbnail_json_missing_file(tmp_path, capsys):
+    code, payload = _run_json(
+        capsys, "thumbnail", str(tmp_path / "nope.png"))
+    assert code == 2
+    assert payload["error"] == "no such file"
+
+
+def test_thumbnail_default_name(tmp_path, capsys):
+    _needs_engine()
+    source = _write_png(tmp_path / "hero.png")
+    assert main(["thumbnail", source]) == 0
+    assert os.path.exists(tmp_path / "hero_thumb.png")
+    capsys.readouterr()
+
+
+def test_thumbnail_json_no_engine(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("PATH", str(tmp_path))  # dir with no engines on it
+    source = _write_png(tmp_path / "hero.png")
+    code, payload = _run_json(capsys, "thumbnail", source)
+    assert code == 3
+    assert "ffmpeg" in payload["error"]

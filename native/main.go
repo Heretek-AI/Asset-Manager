@@ -203,6 +203,54 @@ func (s *Server) routes() *http.ServeMux {
 		writeRaw(w, http.StatusOK, raw)
 	})
 
+	mux.HandleFunc("POST /api/thumbnail", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Source      string `json:"source"`
+			Destination string `json:"destination"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		if req.Source == "" {
+			writeErr(w, http.StatusBadRequest, "source is required")
+			return
+		}
+		args := []string{req.Source}
+		if req.Destination != "" {
+			args = append(args, "--out", req.Destination)
+		}
+		raw, code, err := s.cli("thumbnail", args...)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if code != 0 {
+			status := http.StatusInternalServerError
+			if code == 2 {
+				status = http.StatusNotFound
+			} else if code == 3 {
+				status = http.StatusServiceUnavailable
+			}
+			writeRaw(w, status, raw)
+			return
+		}
+		var doc struct {
+			Destination string `json:"destination"`
+		}
+		if uerr := json.Unmarshal(raw, &doc); uerr != nil || doc.Destination == "" {
+			writeErr(w, http.StatusInternalServerError, "bad thumbnail document")
+			return
+		}
+		data, rerr := os.ReadFile(doc.Destination)
+		if rerr != nil {
+			writeErr(w, http.StatusInternalServerError, rerr.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(data)
+	})
+
 	sub, err := fs.Sub(webFS, "web")
 	if err != nil {
 		log.Fatalf("embedded web UI missing: %v", err)

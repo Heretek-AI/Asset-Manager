@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -190,6 +192,65 @@ func TestScan(t *testing.T) {
 			}
 			if body["project_name"] != "Scan Game" {
 				t.Fatalf("bad project_name: %v", body)
+			}
+		})
+	}
+}
+
+func writeTestPNG(t *testing.T, dir, name string) string {
+	t.Helper()
+	raw, err := base64.StdEncoding.DecodeString(
+		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestThumbnailPNG(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		if _, err2 := exec.LookPath("magick"); err2 != nil {
+			t.Skip("no thumbnail engine (ffmpeg/magick) on PATH")
+		}
+	}
+	s := testServer(t)
+	src := writeTestPNG(t, t.TempDir(), "hero.png")
+	payload, _ := json.Marshal(map[string]string{"source": src})
+	req := httptest.NewRequest(http.MethodPost, "/api/thumbnail", bytes.NewReader(payload))
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("thumbnail: %d %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("content-type = %q", ct)
+	}
+	if magic := rec.Body.Bytes()[:8]; string(magic) != "\x89PNG\r\n\x1a\n" {
+		t.Fatalf("not a PNG: %q", magic)
+	}
+}
+
+func TestThumbnailErrors(t *testing.T) {
+	s := testServer(t)
+	for _, tc := range []struct {
+		name string
+		body string
+		want int
+	}{
+		{"missing source", `{"source": ""}`, 400},
+		{"no such file", `{"source": "/nonexistent/x.png"}`, 404},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/thumbnail",
+				strings.NewReader(tc.body))
+			rec := httptest.NewRecorder()
+			s.routes().ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("got %d, want %d (%s)", rec.Code, tc.want, rec.Body.String())
 			}
 		})
 	}

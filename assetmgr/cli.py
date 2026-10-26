@@ -16,6 +16,7 @@ from contextlib import redirect_stdout
 
 from assetmgr import __version__
 from assetmgr.actions import discover
+from assetmgr.errors import DependencyMissingError
 from assetmgr.godot import find_godot_project_root, get_project_name
 from assetmgr.host import DispatchError, run_action
 from assetmgr.scan import scan_project
@@ -139,6 +140,42 @@ def _parse_porcelain(output: str) -> tuple[str, list[str]]:
     return branch, entries
 
 
+def _cmd_thumbnail(args: argparse.Namespace) -> int:
+    import apsync
+
+    source = os.path.abspath(args.source)
+    if not os.path.isfile(source):
+        if args.json:
+            print(json.dumps({"source": source, "error": "no such file"}))
+        else:
+            print(f"no such file: {source}", file=sys.stderr)
+        return 2
+    if args.out:
+        destination = os.path.abspath(args.out)
+    else:
+        stem, _ext = os.path.splitext(os.path.basename(source))
+        destination = os.path.join(os.path.dirname(source), stem + "_thumb.png")
+    try:
+        made = apsync.generate_thumbnail(source, destination)
+    except DependencyMissingError as exc:
+        if args.json:
+            print(json.dumps({"source": source, "error": str(exc)}))
+        else:
+            print(f"thumbnail failed: {exc}", file=sys.stderr)
+        return 3
+    except Exception as exc:  # tool failure
+        if args.json:
+            print(json.dumps({"source": source, "error": str(exc)}))
+        else:
+            print(f"thumbnail failed: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps({"source": source, "destination": made}))
+    else:
+        print(made)
+    return 0
+
+
 def _cmd_status(args: argparse.Namespace) -> int:
     target = os.path.abspath(args.path or os.getcwd())
     root = find_project_root(target) or target
@@ -211,6 +248,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--path", default="")
     _add_json(p)
     p.set_defaults(func=_cmd_status)
+
+    p = sub.add_parser("thumbnail", help="render a preview image (ffmpeg/ImageMagick)")
+    p.add_argument("source")
+    p.add_argument("--out", default="",
+                   help="destination PNG (default: <name>_thumb.png beside source)")
+    _add_json(p)
+    p.set_defaults(func=_cmd_thumbnail)
     return parser
 
 

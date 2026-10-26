@@ -45,8 +45,8 @@ pre { background: #0c0e11; padding: 12px; border-radius: 6px; overflow: auto; }
   <input id="scanpath" placeholder="/path/to/godot/project" size="34">
   <button onclick="scanProject()">Scan</button>
 </div>
-<table><thead><tr><th>Path</th><th>Size</th><th>Import</th><th>Details</th></tr></thead>
-<tbody id="scanrows"><tr><td colspan="4" class="muted">No scan yet.</td></tr></tbody></table>
+<table><thead><tr><th>Path</th><th>Size</th><th>Import</th><th>Details</th><th>Preview</th></tr></thead>
+<tbody id="scanrows"><tr><td colspan="5" class="muted">No scan yet.</td></tr></tbody></table>
 
 <h2>Status</h2>
 <div class="row">
@@ -129,13 +129,34 @@ async function scanProject() {
     detTd.textContent = detailText(a);
     detTd.title = JSON.stringify({uid: a.uid, params: a.import && a.import.params,
       attributes: a.attributes}, null, 2);
-    tr.append(pathTd, sizeTd, impTd, detTd);
+    const thumbTd = document.createElement('td');
+    const thumbBtn = document.createElement('button');
+    thumbBtn.textContent = 'Show';
+    thumbBtn.onclick = () => showThumb(body.root, a.path, thumbTd, thumbBtn);
+    thumbTd.appendChild(thumbBtn);
+    tr.append(pathTd, sizeTd, impTd, detTd, thumbTd);
     tb.appendChild(tr);
   }
   if (!body.assets.length) {
-    tb.innerHTML = '<tr><td colspan="4" class="muted">No assets found.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="5" class="muted">No assets found.</td></tr>';
   }
   say({project: body.project_name, root: body.root, assets: body.assets.length});
+}
+async function showThumb(root, resPath, cell, btn) {
+  btn.disabled = true;
+  const abs = root + '/' + resPath.replace(/^res:\/\//, '');
+  try {
+    const r = await fetch('/api/thumbnail', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source: abs})});
+    if (!r.ok) { say({http: r.status, ...(await r.json().catch(() => ({})))}); return; }
+    const img = document.createElement('img');
+    img.style.maxWidth = '128px';
+    img.src = URL.createObjectURL(await r.blob());
+    cell.replaceChildren(img);
+  } finally {
+    btn.disabled = false;
+  }
 }
 function detailText(a) {
   const bits = [];

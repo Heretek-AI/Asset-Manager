@@ -50,6 +50,10 @@ Same operations over HTTP; unknown action → 404, dispatch failure → 500,
 not-a-checkout → 404, bad body → 400. The browser UI in `native/web/` uses
 exactly this surface.
 
+`POST /api/thumbnail` (`{"source", "destination"?}`) renders via the host
+`thumbnail` command and returns `image/png` bytes directly (404 unknown
+asset, 503 no engine on the server); the browser's Preview column uses it.
+
 ```bash
 curl localhost:8080/api/info
 curl "localhost:8080/api/actions?scope=file"
@@ -58,10 +62,13 @@ curl -X POST localhost:8080/api/project-init \
   -d '{"directory":"/work/demo-film","name":"demo-film"}'
 curl -X POST localhost:8080/api/run \
   -d '{"action_id":"example::hello-world","path":"/work/demo-film"}'
+curl -X POST localhost:8080/api/thumbnail \
+  -d '{"source":"/work/demo-film/hero.png"}' --output thumb.png
 ```
 
 ## CLI
 
 `assetmgr actions [--root] [--scope file]` · `validate` · `info` ·
 `project-init DIR --name N [--force]` · `run <action-id> [--path P]` ·
-`status [--path P]` (offline `git status`).
+`status [--path P]` (offline `git status`) · `project-scan <root>` (Godot
+asset inventory) · `thumbnail SRC [--out PNG]` (exit 3 = no engine).
