@@ -45,7 +45,8 @@ the same Python host — no behaviour is reimplemented:
 ```bash
 cd native && go test ./... && go build -o assetmgrd .
 ./assetmgrd -home ..            # http://127.0.0.1:8080
-docker compose up --build       # same, in a container (no daemon here to run it)
+docker compose up --build       # same, in a container (verified 2026-10-25:
+                                # image builds; /api/* and the UI respond)
 ```
 
 API: `GET /api/info|/api/actions|/api/validate|/api/status`,
