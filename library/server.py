@@ -7,7 +7,6 @@ Every route except ``GET /health`` requires
 
 from __future__ import annotations
 
-import hmac
 import json
 import os
 import threading
@@ -42,8 +41,9 @@ def _make_handler(lib: "LibraryServer") -> type[BaseHTTPRequestHandler]:
             if self.path == "/health" or self.command == "OPTIONS":
                 return True
             presented = self.headers.get("Authorization", "")
-            expected = f"Bearer {lib.token}"
-            if hmac.compare_digest(presented, expected):
+            if presented.startswith("Bearer "):
+                presented = presented[len("Bearer "):]
+            if lib.check_token(presented):
                 return True
             self._json(401, {"error": "unauthorized"})
             return False
@@ -129,7 +129,7 @@ def _make_handler(lib: "LibraryServer") -> type[BaseHTTPRequestHandler]:
 class LibraryServer:
     """A self-hosted asset library: blob store + metadata + HTTP API."""
 
-    def __init__(self, store_root, db_path, token: str,
+    def __init__(self, store_root, db_path, token: str | None = None,
                  max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES) -> None:
         os.makedirs(store_root, exist_ok=True)
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
@@ -137,11 +137,31 @@ class LibraryServer:
         # One shared connection: handler threads are serialized by this lock.
         self.conn = db.open_db(db_path, check_same_thread=False)
         self._lock = threading.Lock()
-        self.token = token
+        if token:
+            self._ensure_bootstrap_token(token)
         self.max_upload_bytes = max_upload_bytes
         self.ready = threading.Event()
         self.port = 0
         self._httpd: ThreadingHTTPServer | None = None
+
+    def _ensure_bootstrap_token(self, token: str) -> None:
+        """Seed the ``default`` token on first run (back-compat single secret)."""
+        import hashlib as _hashlib
+
+        with self._lock:
+            exists = self.conn.execute(
+                "SELECT 1 FROM api_tokens WHERE name='default'").fetchone()
+            if exists is None:
+                self.conn.execute(
+                    "INSERT INTO api_tokens(token_sha256, name)"
+                    " VALUES (?, 'default')",
+                    (_hashlib.sha256(token.encode()).hexdigest(),))
+                self.conn.commit()
+
+    def check_token(self, presented: str) -> bool:
+        """Thread-safe :func:`library.db.check_token`."""
+        with self._lock:
+            return db.check_token(self.conn, presented)
 
     def list_assets(self, **filters) -> list:
         """Thread-safe :func:`library.db.list_assets`."""

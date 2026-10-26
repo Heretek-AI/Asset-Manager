@@ -1,6 +1,10 @@
 """Run the self-hosted asset library server.
 
-Token via ``--token`` or ``ASSETMGR_LIBRARY_TOKEN`` (required).
+First run: create a token, then start (or pass --token once to bootstrap
+the ``default`` token)::
+
+    python -m assetmgr.cli library-token-create alice --db library-data/library.db
+    python -m library --store library-data/store --db library-data/library.db
 """
 
 from __future__ import annotations
@@ -22,7 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--db", default="library-data/library.db",
                         help="metadata database file")
     parser.add_argument("--token", default="",
-                        help="bearer token (or ASSETMGR_LIBRARY_TOKEN)")
+                        help="bootstrap the 'default' token on first run "
+                        "(or ASSETMGR_LIBRARY_TOKEN)")
     parser.add_argument("--max-upload-bytes", type=int,
                         default=DEFAULT_MAX_UPLOAD_BYTES)
     return parser
@@ -31,12 +36,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     token = args.token or os.environ.get("ASSETMGR_LIBRARY_TOKEN", "")
-    if not token:
-        print("error: library token required (--token or ASSETMGR_LIBRARY_TOKEN)",
-              file=sys.stderr)
-        return 2
-    server = LibraryServer(args.store, args.db, token,
+    server = LibraryServer(args.store, args.db, token or None,
                            max_upload_bytes=args.max_upload_bytes)
+    from library import db as library_db
+    names = [t["name"] for t in library_db.list_tokens(server.conn)]
+    if not names:
+        print("warning: no API tokens exist; create one with "
+              "assetmgr library-token-create <name> --db "
+              + args.db, file=sys.stderr)
     print(f"asset-library on http://{args.host}:{args.port}"
           f" (store {args.store})", flush=True)
     server.serve_forever(args.host, args.port)

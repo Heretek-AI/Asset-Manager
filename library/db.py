@@ -1,13 +1,17 @@
-"""SQLite metadata for library assets (stdlib only)."""
+"""SQLite metadata for library assets and API tokens (stdlib only)."""
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import secrets
 import sqlite3
 from pathlib import Path
 from typing import Any
 
-__all__ = ["open_db", "add_asset", "get_asset", "list_assets"]
+__all__ = ["open_db", "add_asset", "get_asset", "list_assets",
+           "create_token", "revoke_token", "list_tokens", "check_token"]
 
 SCHEMA = """\
 CREATE TABLE IF NOT EXISTS assets(
@@ -22,6 +26,11 @@ CREATE TABLE IF NOT EXISTS assets(
  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(kind);
+CREATE TABLE IF NOT EXISTS api_tokens(
+ token_sha256 TEXT PRIMARY KEY,
+ name TEXT NOT NULL UNIQUE,
+ created_at TEXT NOT NULL DEFAULT (datetime('now')),
+ revoked INTEGER NOT NULL DEFAULT 0);
 """
 
 
@@ -93,3 +102,53 @@ def list_assets(conn: sqlite3.Connection, *, q: str = "",
     if tag:
         rows = [r for r in rows if tag in r["tags"]]
     return rows
+
+
+def _token_digest(plaintext: str) -> str:
+    return hashlib.sha256(plaintext.encode()).hexdigest()
+
+
+def create_token(conn: sqlite3.Connection, name: str) -> str:
+    """Create an API token for *name*; returns the plaintext (shown once).
+
+    Only the SHA-256 digest is stored. Raises ValueError on duplicate name.
+    """
+    plaintext = secrets.token_urlsafe(32)
+    try:
+        conn.execute(
+            "INSERT INTO api_tokens(token_sha256, name) VALUES (?, ?)",
+            (_token_digest(plaintext), name))
+    except sqlite3.IntegrityError:
+        raise ValueError(f"token {name!r} already exists") from None
+    conn.commit()
+    return plaintext
+
+
+def revoke_token(conn: sqlite3.Connection, name: str) -> bool:
+    """Revoke *name*'s token; True when something was revoked."""
+    cur = conn.execute("UPDATE api_tokens SET revoked=1 WHERE name=?",
+                       (name,))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def check_token(conn: sqlite3.Connection, presented: str) -> bool:
+    """Whether *presented* matches a live (non-revoked) token."""
+    if not presented:
+        return False
+    digest = _token_digest(presented)
+    stored = [r[0] for r in
+              conn.execute("SELECT token_sha256 FROM api_tokens"
+                           " WHERE revoked=0")]
+    return any(hmac.compare_digest(digest, candidate) for candidate in stored)
+
+
+def list_tokens(conn: sqlite3.Connection,
+                include_revoked: bool = False) -> list[dict[str, Any]]:
+    """Token metadata (digests, never plaintext), oldest first."""
+    sql = "SELECT name, token_sha256, created_at, revoked FROM api_tokens"
+    if not include_revoked:
+        sql += " WHERE revoked=0"
+    return [{"name": r[0], "token_sha256": r[1], "created_at": r[2],
+             "revoked": bool(r[3])}
+            for r in conn.execute(sql + " ORDER BY rowid")]

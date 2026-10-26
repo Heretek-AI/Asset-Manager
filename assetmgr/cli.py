@@ -261,6 +261,56 @@ def _cmd_library_pull(args: argparse.Namespace) -> int:
     return 0
 
 
+def _library_db(args: argparse.Namespace) -> str:
+    return os.path.abspath(args.db or "library-data/library.db")
+
+
+def _cmd_library_token_create(args: argparse.Namespace) -> int:
+    from library import db as library_db
+
+    conn = library_db.open_db(_library_db(args))
+    try:
+        plaintext = library_db.create_token(conn, args.name)
+    except ValueError as exc:
+        return _die(args, str(exc), 1)
+    finally:
+        conn.close()
+    # Plaintext is shown once and never stored.
+    _emit(args, plaintext, {"name": args.name, "token": plaintext})
+    return 0
+
+
+def _cmd_library_token_list(args: argparse.Namespace) -> int:
+    from library import db as library_db
+
+    conn = library_db.open_db(_library_db(args))
+    try:
+        rows = library_db.list_tokens(conn)
+    finally:
+        conn.close()
+    if args.json:
+        print(json.dumps({"tokens": rows}))
+    else:
+        for row in rows:
+            print(f"{row['name']}  created={row['created_at']}")
+    return 0
+
+
+def _cmd_library_token_revoke(args: argparse.Namespace) -> int:
+    from library import db as library_db
+
+    conn = library_db.open_db(_library_db(args))
+    try:
+        revoked = library_db.revoke_token(conn, args.name)
+    finally:
+        conn.close()
+    if not revoked:
+        return _die(args, f"no such token: {args.name}", 1)
+    _emit(args, f"revoked {args.name}", {"name": args.name,
+                                         "revoked": True})
+    return 0
+
+
 def _die(args: argparse.Namespace, message: str, code: int) -> int:
     if getattr(args, "json", False):
         print(json.dumps({"error": message}))
@@ -353,6 +403,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--token", default="")
     _add_json(p)
     p.set_defaults(func=_cmd_library_pull)
+
+    p = sub.add_parser("library-token-create",
+                       help="create a library API token (printed once)")
+    p.add_argument("name")
+    p.add_argument("--db", default="",
+                   help="metadata DB (default: library-data/library.db)")
+    _add_json(p)
+    p.set_defaults(func=_cmd_library_token_create)
+
+    p = sub.add_parser("library-token-list", help="list library API tokens")
+    p.add_argument("--db", default="")
+    _add_json(p)
+    p.set_defaults(func=_cmd_library_token_list)
+
+    p = sub.add_parser("library-token-revoke", help="revoke a library API token")
+    p.add_argument("name")
+    p.add_argument("--db", default="")
+    _add_json(p)
+    p.set_defaults(func=_cmd_library_token_revoke)
     return parser
 
 

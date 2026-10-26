@@ -173,3 +173,28 @@ def test_library_push_needs_endpoint(tmp_path, capsys):
     code, payload = _run_json(capsys, "library-push", source)
     assert code == 2
     assert "server" in payload["error"]
+
+
+def test_library_token_lifecycle_against_server(tmp_path, capsys):
+    from test_library_server import start_server
+    db = str(tmp_path / "srv" / "lib.db")
+    _, base = start_server(tmp_path / "srv")
+    code, created = _run_json(capsys, "library-token-create", "carol",
+                              "--db", db)
+    assert code == 0
+    token = created["token"]
+    code, listed = _run_json(capsys, "library-token-list", "--db", db)
+    assert code == 0
+    # "default" comes from the test server's bootstrap token
+    assert {t["name"] for t in listed["tokens"]} == {"default", "carol"}
+    # carol's token works against the live server sharing the same DB
+    assert _run_json(capsys, "library-push", _write_png(tmp_path / "a.png"),
+                     "--server", base, "--token", token)[0] == 0
+    code, _ = _run_json(capsys, "library-token-revoke", "carol",
+                        "--db", db)
+    assert code == 0
+    code, payload = _run_json(capsys, "library-push",
+                              _write_png(tmp_path / "b.png"),
+                              "--server", base, "--token", token)
+    assert code == 1
+    assert "401" in payload["error"]

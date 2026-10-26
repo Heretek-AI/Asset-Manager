@@ -38,10 +38,15 @@ Publish the other way with the `godot::publish-to-library` action
 
 ## Security notes (read before exposing this)
 
-- Token auth only, **no TLS, no users, no rate limiting**. Safe on a LAN /
-  VPN or behind a reverse proxy that adds TLS — do not put 8081 directly
-  on the internet.
-- Tokens live in `.env` (git-ignored; see `.env.example`). Rotate by
-  changing the value and recreating the container.
+- Token auth: one token per teammate, created locally against the DB file
+  (plaintext shown once, only digests stored).
+- Revocation is instant (`library-token-revoke`); revoked tokens 401.
+  There are no roles — every live token reads and writes everything.
+- No TLS, no rate limiting. Fine on a LAN / VPN or behind a reverse proxy
+  that adds TLS — do not put 8081 directly on the internet.
+- Tokens live in `.env` (git-ignored; see `.env.example`) only as the
+  *bootstrap* secret: on first start it seeds the `default` token, and is
+  ignored once any token exists. Prefer per-user tokens after that.
+- Rotate by revoking the name and creating a fresh one.
 - The server trusts its operator: anyone with the token can read and
   write every asset.

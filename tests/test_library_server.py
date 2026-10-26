@@ -52,6 +52,26 @@ def test_auth_required(tmp_path):
     assert call(base, "/api/v1/assets", token="wrong")[0] == 401
 
 
+def test_multiple_tokens_and_revocation(tmp_path):
+    from library import db as library_db
+    _, base = start_server(tmp_path)
+    db_path = tmp_path / "lib.db"
+    conn = library_db.open_db(str(db_path))
+    try:
+        second = library_db.create_token(conn, "second")
+    finally:
+        conn.close()
+    assert call(base, "/api/v1/assets", token=TOKEN)[0] == 200
+    assert call(base, "/api/v1/assets", token=second)[0] == 200
+    conn = library_db.open_db(str(db_path))
+    try:
+        assert library_db.revoke_token(conn, "second") is True
+    finally:
+        conn.close()
+    assert call(base, "/api/v1/assets", token=second)[0] == 401
+    assert call(base, "/api/v1/assets", token=TOKEN)[0] == 200
+
+
 def test_upload_list_download_roundtrip(tmp_path):
     _, base = start_server(tmp_path)
     status, body = call(base, "/api/v1/assets", token=TOKEN, data=b"png-bytes",
