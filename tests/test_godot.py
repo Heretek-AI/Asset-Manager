@@ -12,9 +12,12 @@ from assetmgr.godot import (
     find_godot_project_root,
     get_project_name,
     import_files_into_project,
+    import_summary,
     is_godot_project,
+    list_import_files,
     list_uid_files,
     parse_godot_config,
+    read_import,
     read_uid,
 )
 from assetmgr.host import run_action
@@ -159,3 +162,69 @@ def test_live_headless_reimport(tmp_path):
     assert os.path.isdir(os.path.join(root, ".godot"))
     assert os.path.isdir(os.path.join(root, ".godot", "imported"))
     assert anchorpoint  # bridge importable alongside adapter use
+
+
+REAL_TEXTURE_IMPORT = """\
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://xsp571jaov0p"
+path="res://.godot/imported/hero.png-87aa9197b739ca3ad1031ac3d1b82853.ctex"
+metadata={
+"vram_texture": false
+}
+
+[deps]
+
+source_file="res://hero.png"
+dest_files=["res://.godot/imported/hero.png-87aa9197b739ca3ad1031ac3d1b82853.ctex"]
+
+[params]
+
+compress/mode=0
+compress/lossy_quality=0.7
+process/fix_alpha_border=true
+roughness/src_normal=""
+"""
+
+
+def test_parse_real_import_file():
+    parsed = parse_godot_config(REAL_TEXTURE_IMPORT)
+    assert parsed["remap"]["importer"] == "texture"
+    assert parsed["remap"]["uid"] == "uid://xsp571jaov0p"
+    assert parsed["deps"]["source_file"] == "res://hero.png"
+    assert parsed["deps"]["dest_files"] == [
+        "res://.godot/imported/hero.png-87aa9197b739ca3ad1031ac3d1b82853.ctex"]
+    assert parsed["params"]["compress/mode"] == 0
+    assert parsed["params"]["compress/lossy_quality"] == 0.7
+    assert parsed["params"]["process/fix_alpha_border"] is True
+    assert parsed["params"]["roughness/src_normal"] == ""
+    # multiline dict stays raw text, keyed under its owner
+    assert "vram_texture" in str(parsed["remap"]["metadata"])
+    summary = import_summary(parsed)
+    assert summary["importer"] == "texture"
+    assert summary["type"] == "CompressedTexture2D"
+    assert summary["uid"] == "uid://xsp571jaov0p"
+    assert summary["params"]["compress/mode"] == 0
+
+
+def test_array_with_quoted_commas():
+    parsed = parse_godot_config('[s]\nfiles=["a,b", "c"]\nn=2\n')
+    assert parsed["s"]["files"] == ["a,b", "c"]
+    assert parsed["s"]["n"] == 2
+
+
+def test_quoted_key_lines_are_continuations():
+    parsed = parse_godot_config('[s]\nmetadata={\n"a=b": true\n}\nnext=1\n')
+    assert "a=b" in str(parsed["s"]["metadata"])
+    assert parsed["s"]["next"] == 1
+
+
+def test_list_and_read_import_files(tmp_path):
+    root = make_project(tmp_path)
+    imp = os.path.join(root, "hero.png.import")
+    with open(imp, "w", encoding="utf-8") as handle:
+        handle.write(REAL_TEXTURE_IMPORT)
+    assert list_import_files(root) == [imp]
+    assert read_import(imp)["remap"]["importer"] == "texture"

@@ -16,11 +16,13 @@ from __future__ import annotations
 import os
 import re
 import shutil
+from typing import Any
 
 PROJECT_FILE = "project.godot"
 GODOT_DIR = ".godot"
 
 _SECTION_RE = re.compile(r"^\[(.+)\]\s*$")
+_KEY_RE = re.compile(r"^[A-Za-z0-9_/@.\-]+\s*=")
 _ESCAPE_RE = re.compile(r"\\(\\|\"|n|t|r|u[0-9a-fA-F]{4})")
 
 
@@ -40,11 +42,40 @@ def _unescape(text: str) -> str:
     return _ESCAPE_RE.sub(_replace, text)
 
 
+def _split_top_level(text: str) -> list[str]:
+    """Split on commas that are not inside double quotes."""
+    parts, current, in_quotes, escape = [], "", False, False
+    for char in text:
+        if escape:
+            current += char
+            escape = False
+        elif char == "\\" and in_quotes:
+            current += char
+            escape = True
+        elif char == '"':
+            current += char
+            in_quotes = not in_quotes
+        elif char == "," and not in_quotes:
+            parts.append(current)
+            current = ""
+        else:
+            current += char
+    parts.append(current)
+    return parts
+
+
 def parse_godot_value(raw: str) -> object:
-    """Parse one ConfigFile value (strings, bools, numbers, else raw text)."""
+    """Parse one ConfigFile value (strings, bools, numbers, arrays).
+
+    Dictionaries stay raw text: Godot's ``{...}`` blocks have no stable
+    one-line form worth re-parsing here.
+    """
     text = raw.strip()
     if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
         return _unescape(text[1:-1])
+    if text.startswith("[") and text.endswith("]"):
+        return [parse_godot_value(item) for item in _split_top_level(text[1:-1])
+                if item.strip()]
     lowered = text.lower()
     if lowered in ("true", "false"):
         return lowered == "true"
@@ -59,10 +90,16 @@ def parse_godot_value(raw: str) -> object:
     return text
 
 
-def parse_godot_config(text: str) -> dict[str, dict[str, object]]:
-    """Parse Godot ConfigFile text into ``{section: {key: value}}``."""
-    config: dict[str, dict[str, object]] = {}
+def parse_godot_config(text: str) -> dict[str, dict[str, Any]]:
+    """Parse Godot ConfigFile text into ``{section: {key: value}}``.
+
+    Handles multi-line values (Godot writes dict/array values across
+    lines in ``*.import`` files): a line without ``=`` continues the
+    previous key's value.
+    """
+    raw: dict[str, dict[str, str]] = {}
     section = ""
+    pending_key: str | None = None
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith(";"):
@@ -70,13 +107,22 @@ def parse_godot_config(text: str) -> dict[str, dict[str, object]]:
         match = _SECTION_RE.match(stripped)
         if match:
             section = match.group(1)
-            config.setdefault(section, {})
+            raw.setdefault(section, {})
+            pending_key = None
             continue
-        if "=" not in stripped or not section:
+        if section and _KEY_RE.match(stripped):
+            key, _, value = stripped.partition("=")
+            key = key.strip()
+            raw[section][key] = value.strip()
+            pending_key = key
             continue
-        key, _, value = stripped.partition("=")
-        config[section][key.strip()] = parse_godot_value(value)
-    return config
+        if pending_key is not None and section:
+            raw[section][pending_key] += "\n" + stripped
+    resolved: dict[str, dict[str, Any]] = {}
+    for section_name, keys in raw.items():
+        resolved[section_name] = {k: parse_godot_value(v)
+                                  for k, v in keys.items()}
+    return resolved
 
 
 def find_godot_project_root(start: str) -> str | None:
@@ -98,7 +144,7 @@ def is_godot_project(path: str) -> bool:
     return find_godot_project_root(path) is not None
 
 
-def read_project_config(root: str) -> dict[str, dict[str, object]]:
+def read_project_config(root: str) -> dict[str, dict[str, Any]]:
     """Parse the project's ``project.godot``."""
     marker = os.path.join(root, PROJECT_FILE)
     with open(marker, encoding="utf-8") as handle:
@@ -159,3 +205,37 @@ def import_files_into_project(paths: list[str], root: str,
             continue
         destinations.append(str(shutil.copy2(absolute, destination)))
     return destinations
+
+
+def list_import_files(root: str) -> list[str]:
+    """All ``*.import`` files in the project, sorted (.godot/ excluded)."""
+    found: list[str] = []
+    for dirpath, _dirnames, filenames in os.walk(root):
+        if GODOT_DIR in os.path.relpath(dirpath, root).split(os.sep):
+            continue
+        for filename in filenames:
+            if filename.endswith(".import"):
+                found.append(os.path.join(dirpath, filename))
+    return sorted(found)
+
+
+def read_import(import_path: str) -> dict[str, dict[str, Any]]:
+    """Parse a ``*.import`` sidecar into ``{section: {key: value}}``."""
+    with open(import_path, encoding="utf-8") as handle:
+        return parse_godot_config(handle.read())
+
+
+def import_summary(parsed: dict[str, dict[str, Any]]) -> dict[str, object]:
+    """Condense a parsed ``*.import`` to importer/type/uid/files/params."""
+    remap = parsed.get("remap", {})
+    deps = parsed.get("deps", {})
+    dest = deps.get("dest_files", [])
+    return {
+        "importer": remap.get("importer"),
+        "type": remap.get("type"),
+        "uid": remap.get("uid"),
+        "path": remap.get("path"),
+        "source_file": deps.get("source_file"),
+        "dest_files": dest if isinstance(dest, list) else [dest],
+        "params": parsed.get("params", {}),
+    }
