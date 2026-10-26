@@ -1,0 +1,10 @@
+services:
+  assetmgr:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./work:/work
+    environment:
+      ASSETMGR_HOME: /app
+      ASSETMGR_ACTIONS: /app/actions

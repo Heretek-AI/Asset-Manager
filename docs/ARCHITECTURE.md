@@ -31,6 +31,17 @@ assetmgr/cli.py   ── actions|validate|info|project-init|run|status
 - `apsync/` — local engine: markers, `shutil` file ops, `resolve_variables`,
   `_vNNN` versioning, sidecar attributes, external-tool thumbnails.
 - `assetmgr/cli.py` — thin argparse over the above; `status` shells to `git`.
+  Every command takes `--json`; stdout is then exactly one JSON document
+  (action output is captured into an `output` field) for machine consumers.
+- `native/assetmgrd` (Go, stdlib only) — native binary serving `native/web/`
+  (embedded) and a JSON API (`GET /api/info|actions|validate|status`,
+  `POST /api/project-init|run`). It shells out to
+  `python3 -m assetmgr.cli … --json`, so the Python host stays the single
+  source of truth. Binds loopback by default; `-addr`, `-python`, `-home`,
+  `-actions` flags (or `ASSETMGR_*` env). Covered by `go test ./...`.
+- `Dockerfile` — multi-stage: `golang:1.24-bookworm` builds the static
+  binary; `debian:trixie-slim` runtime ships python3 + python3-yaml + git
+  with the repo tree; `CMD assetmgrd -addr 0.0.0.0:8080`, `/work` volume.
 
 ## Qt shell (roadmap, not v0.1)
 

@@ -44,6 +44,22 @@ apsync.resolve_variables("${yaml_dir}/tool", {"yaml_dir": "/x"})
 apsync.generate_thumbnail("clip.mov", "thumb.png")  # needs ffmpeg/ImageMagick
 ```
 
+## HTTP API (`assetmgrd`)
+
+Same operations over HTTP; unknown action → 404, dispatch failure → 500,
+not-a-checkout → 404, bad body → 400. The browser UI in `native/web/` uses
+exactly this surface.
+
+```bash
+curl localhost:8080/api/info
+curl "localhost:8080/api/actions?scope=file"
+curl "localhost:8080/api/status?path=/work/demo-film"
+curl -X POST localhost:8080/api/project-init \
+  -d '{"directory":"/work/demo-film","name":"demo-film"}'
+curl -X POST localhost:8080/api/run \
+  -d '{"action_id":"example::hello-world","path":"/work/demo-film"}'
+```
+
 ## CLI
 
 `assetmgr actions [--root] [--scope file]` · `validate` · `info` ·

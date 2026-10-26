@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asset-Manager</title>
+<style>
+:root { color-scheme: dark; }
+body { font-family: system-ui, sans-serif; background: #14161a; color: #e8e8e8;
+       margin: 0 auto; max-width: 900px; padding: 24px; }
+h1 { font-size: 1.4rem; } h2 { font-size: 1.1rem; margin-top: 2em;
+  border-bottom: 1px solid #333; padding-bottom: 4px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #2a2d33; }
+input, select, button { background: #22262c; color: #e8e8e8;
+  border: 1px solid #444; border-radius: 4px; padding: 6px 10px; }
+button { cursor: pointer; } button:hover { background: #2c3138; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+pre { background: #0c0e11; padding: 12px; border-radius: 6px; overflow: auto; }
+.muted { color: #999; }
+</style>
+</head>
+<body>
+<h1>Asset-Manager <span class="muted" id="ver"></span></h1>
+
+<h2>Actions</h2>
+<div class="row">
+  <input id="scope" placeholder="scope filter (e.g. file)" size="24">
+  <input id="runpath" placeholder="/path/to/target (optional)" size="34">
+  <button onclick="loadActions()">Refresh</button>
+</div>
+<table><thead><tr><th>ID</th><th>Name</th><th>Type</th><th></th></tr></thead>
+<tbody id="actions"></tbody></table>
+
+<h2>Project</h2>
+<div class="row">
+  <input id="projdir" placeholder="/path/to/new/project" size="34">
+  <input id="projname" placeholder="name" size="16">
+  <button onclick="initProject()">Init project</button>
+</div>
+
+<h2>Status</h2>
+<div class="row">
+  <input id="statuspath" placeholder="/path/to/project" size="34">
+  <button onclick="showStatus()">Status</button>
+</div>
+<pre id="out">Ready.</pre>
+
+<script>
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json();
+  if (!r.ok && !body.error && body.exit_code === undefined) throw body;
+  return {status: r.status, body};
+}
+function say(obj) { document.getElementById('out').textContent =
+  typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2); }
+
+async function loadActions() {
+  const scope = document.getElementById('scope').value;
+  const {body} = await api('/api/actions?scope=' + encodeURIComponent(scope));
+  const tb = document.getElementById('actions');
+  tb.innerHTML = '';
+  for (const a of body.actions) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td></td><td></td><td></td><td></td>';
+    tr.children[0].textContent = a.id;
+    tr.children[1].textContent = a.name;
+    tr.children[2].textContent = a.type;
+    const btn = document.createElement('button');
+    btn.textContent = 'Run';
+    btn.onclick = () => runAction(a.id);
+    tr.children[3].appendChild(btn);
+    tb.appendChild(tr);
+  }
+  if (body.errors && body.errors.length) say({warning: body.errors});
+}
+async function runAction(id) {
+  const path = document.getElementById('runpath').value;
+  const {status, body} = await api('/api/run', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action_id: id, path})});
+  say({http: status, ...body});
+}
+async function initProject() {
+  const directory = document.getElementById('projdir').value;
+  const name = document.getElementById('projname').value;
+  const {body} = await api('/api/project-init', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({directory, name})});
+  say(body);
+}
+async function showStatus() {
+  const path = document.getElementById('statuspath').value;
+  const {status, body} = await api('/api/status?path=' + encodeURIComponent(path));
+  say({http: status, ...body});
+}
+fetch('/api/info').then(r => r.json()).then(i => {
+  document.getElementById('ver').textContent = 'v' + i.version + ' · ' + i.mode;
+}).catch(() => {});
+loadActions();
+</script>
+</body>
+</html>

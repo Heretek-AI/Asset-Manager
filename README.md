@@ -25,7 +25,7 @@ and a **Python automation API**.
 - Server-backed collaboration (locks, channel notifications, membership) is
   an explicit boundary: those calls raise `ServerRequiredError`.
 
-## Quick start
+## Quick start (Python host)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -37,11 +37,29 @@ assetmgr project-init ./demo-film --name demo-film
 assetmgr run example::hello-world --path ./demo-film
 ```
 
+## Web UI (native binary + Docker)
+
+The native `assetmgrd` binary serves the browser UI and a JSON API, driving
+the same Python host — no behaviour is reimplemented:
+
+```bash
+cd native && go test ./... && go build -o assetmgrd .
+./assetmgrd -home ..            # http://127.0.0.1:8080
+docker compose up --build       # same, in a container (no daemon here to run it)
+```
+
+API: `GET /api/info|/api/actions|/api/validate|/api/status`,
+`POST /api/project-init|/api/run`. Every command also has a `--json` CLI
+form the binary consumes; see `docs/API.md`.
+
 ## Layout
 
 | Path | Contents |
 |---|---|
-| `assetmgr/` | host: manifests, dispatch, project store, CLI |
+| `assetmgr/` | host: manifests, dispatch, project store, CLI (`--json` for machines) |
+| `native/` | `assetmgrd` Go binary: web UI + JSON API over the Python host |
+| `native/web/` | browser UI (no dependencies, `fetch` against `/api/*`) |
+| `Dockerfile` / `docker-compose.yml` | Go build stage + `trixie-slim` runtime (python3, git) |
 | `anchorpoint/` | automation API bridge (UI/context side) |
 | `apsync/` | local project/file engine (store side) |
 | `actions/` | bundled example actions (`<name>/<name>.yaml` + `.py`) |

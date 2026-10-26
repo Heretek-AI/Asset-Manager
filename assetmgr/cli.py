@@ -1,11 +1,18 @@
-"""``assetmgr`` command line: reference-CLI-inspired, local-only."""
+"""``assetmgr`` command line: reference-CLI-inspired, local-only.
+
+Human-readable text is the default; every command also accepts ``--json``
+for machine consumers (the native ``assetmgrd`` binary drives this).
+"""
 
 from __future__ import annotations
 
 import argparse
+import io
+import json
 import os
 import subprocess
 import sys
+from contextlib import redirect_stdout
 
 from assetmgr import __version__
 from assetmgr.actions import discover
@@ -13,22 +20,41 @@ from assetmgr.host import DispatchError, run_action
 from assetmgr.store import find_project_root, init_project
 
 
+def _emit(args: argparse.Namespace, text: str, payload: dict) -> None:
+    if getattr(args, "json", False):
+        print(json.dumps(payload))
+    else:
+        print(text)
+
+
 def _cmd_actions(args: argparse.Namespace) -> int:
     found, errors = discover(args.root)
     scope = args.scope
+    rows = []
     for manifest in found:
         if scope and not manifest.enabled_for_trigger(scope):
             continue
-        flag = manifest.enable
-        print(f"{manifest.manifest_id}  [{manifest.action_type}]  "
-              f"{manifest.name}  (enable={flag})")
+        rows.append(manifest)
+        if not args.json:
+            print(f"{manifest.manifest_id}  [{manifest.action_type}]  "
+                  f"{manifest.name}  (enable={manifest.enable})")
     for problem in errors:
         print(f"warning: {problem}", file=sys.stderr)
+    if args.json:
+        print(json.dumps({"actions": [
+            {"id": m.manifest_id, "name": m.name, "type": m.action_type,
+             "category": m.category, "description": m.description,
+             "enable": m.enable, "icon": m.icon_path,
+             "triggers": sorted(m.register.keys())} for m in rows],
+            "errors": errors}))
     return 0
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
     _found, errors = discover(args.root)
+    if args.json:
+        print(json.dumps({"valid": not errors, "errors": errors}))
+        return 1 if errors else 0
     for problem in errors:
         print(problem, file=sys.stderr)
     if errors:
@@ -38,14 +64,16 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_info(_args: argparse.Namespace) -> int:
-    print(f"asset-manager {__version__} (headless host, local-only)")
+def _cmd_info(args: argparse.Namespace) -> int:
+    _emit(args, f"asset-manager {__version__} (headless host, local-only)",
+          {"name": "asset-manager", "version": __version__,
+           "mode": "headless host, local-only"})
     return 0
 
 
 def _cmd_project_init(args: argparse.Namespace) -> int:
     marker = init_project(args.directory, args.name, force=args.force)
-    print(f"project initialised: {marker}")
+    _emit(args, f"project initialised: {marker}", {"marker": marker})
     return 0
 
 
@@ -53,13 +81,39 @@ def _cmd_run(args: argparse.Namespace) -> int:
     found, _errors = discover(args.root)
     wanted = [m for m in found if m.manifest_id == args.action_id]
     if not wanted:
-        print(f"unknown action: {args.action_id}", file=sys.stderr)
+        if args.json:
+            print(json.dumps({"action_id": args.action_id,
+                              "error": "unknown action"}))
+        else:
+            print(f"unknown action: {args.action_id}", file=sys.stderr)
         return 2
+    buf = io.StringIO()
     try:
-        return run_action(wanted[0], path=args.path or "")
+        if args.json:
+            with redirect_stdout(buf):
+                code = run_action(wanted[0], path=args.path or "")
+        else:
+            code = run_action(wanted[0], path=args.path or "")
     except DispatchError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        if args.json:
+            print(json.dumps({"action_id": args.action_id, "error": str(exc)}))
+        else:
+            print(f"error: {exc}", file=sys.stderr)
         return 1
+    if args.json:
+        print(json.dumps({"action_id": args.action_id, "exit_code": code,
+                          "output": buf.getvalue()}))
+    return code
+
+
+def _parse_porcelain(output: str) -> tuple[str, list[str]]:
+    branch, entries = "", []
+    for line in output.splitlines():
+        if line.startswith("## "):
+            branch = line[3:]
+        elif line.strip():
+            entries.append(line)
+    return branch, entries
 
 
 def _cmd_status(args: argparse.Namespace) -> int:
@@ -70,10 +124,23 @@ def _cmd_status(args: argparse.Namespace) -> int:
         capture_output=True, text=True,
     )
     if completed.returncode != 0:
-        print(f"not a git checkout: {root}", file=sys.stderr)
+        if args.json:
+            print(json.dumps({"root": root, "error": "not a git checkout"}))
+        else:
+            print(f"not a git checkout: {root}", file=sys.stderr)
         return 1
-    print(completed.stdout.rstrip() or "(clean)")
+    branch, entries = _parse_porcelain(completed.stdout)
+    if args.json:
+        print(json.dumps({"root": root, "branch": branch,
+                          "clean": not entries, "entries": entries}))
+    else:
+        print(completed.stdout.rstrip() or "(clean)")
     return 0
+
+
+def _add_json(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--json", action="store_true",
+                        help="emit machine-readable JSON on stdout")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -86,29 +153,35 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--root", default="actions")
     p.add_argument("--scope", default="",
                    help="only actions registered for this trigger")
+    _add_json(p)
     p.set_defaults(func=_cmd_actions)
 
     p = sub.add_parser("validate", help="validate action manifests")
     p.add_argument("--root", default="actions")
+    _add_json(p)
     p.set_defaults(func=_cmd_validate)
 
     p = sub.add_parser("info", help="host info")
+    _add_json(p)
     p.set_defaults(func=_cmd_info)
 
     p = sub.add_parser("project-init", help="create a local project marker")
     p.add_argument("directory")
     p.add_argument("--name", required=True)
     p.add_argument("--force", action="store_true")
+    _add_json(p)
     p.set_defaults(func=_cmd_project_init)
 
     p = sub.add_parser("run", help="run one action by id")
     p.add_argument("action_id")
     p.add_argument("--root", default="actions")
     p.add_argument("--path", default="")
+    _add_json(p)
     p.set_defaults(func=_cmd_run)
 
     p = sub.add_parser("status", help="git status of a project (offline)")
     p.add_argument("--path", default="")
+    _add_json(p)
     p.set_defaults(func=_cmd_status)
     return parser
 
