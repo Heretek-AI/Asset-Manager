@@ -13,11 +13,13 @@ import re
 import secrets
 import shutil
 import ssl
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from apsync import generate_thumbnail as _render_thumbnail
 from library import blobs, db
 
 __all__ = ["LibraryServer", "DEFAULT_MAX_UPLOAD_BYTES", "UploadTooLargeError"]
@@ -101,6 +103,9 @@ def _make_handler(lib: "LibraryServer") -> type[BaseHTTPRequestHandler]:
                 self.end_headers()
                 self.wfile.write(blob)
                 return
+            if path.startswith("/api/v1/assets/") and path.endswith("/thumbnail"):
+                self._serve_thumbnail(path)
+                return
             parts = path.strip("/").split("/")
             if (len(parts) == 4 and parts[:3] == ["api", "v1", "uploads"]
                     and _ID_RE.fullmatch(parts[3] or "")):
@@ -164,11 +169,13 @@ def _make_handler(lib: "LibraryServer") -> type[BaseHTTPRequestHandler]:
                 return
             tags = [t for t in query.get("tags", "").split(",") if t]
             digest = blobs.put(lib.store_root, data)
+            thumb = lib.thumbnail_for_bytes(data, name)
             asset_id = lib.add_asset(
                 name=name, blob_sha256=digest,
                 size_bytes=len(data), kind=query.get("kind", "raw"),
                 godot_importer=query.get("importer") or None,
-                params=params, tags=tags)
+                params=params, tags=tags,
+                thumbnail_sha256=thumb or "")
             self._json(201, {"id": asset_id, "blob_sha256": digest})
 
         def _upload_meta(self) -> tuple[dict, dict | None]:
@@ -180,6 +187,29 @@ def _make_handler(lib: "LibraryServer") -> type[BaseHTTPRequestHandler]:
             except ValueError:
                 params = None
             return query, params
+
+        def _serve_thumbnail(self, path: str) -> None:
+            try:
+                asset_id = int(path.rsplit("/", 2)[-2])
+                row = lib.get_asset(asset_id)
+            except (ValueError, KeyError):
+                self._json(404, {"error": "no such asset"})
+                return
+            digest = row.get("thumbnail_sha256")
+            if not digest:
+                self._json(404, {"error": "no thumbnail"})
+                return
+            try:
+                blob = blobs.get_path(lib.store_root,
+                                       str(digest)).read_bytes()
+            except FileNotFoundError:
+                self._json(404, {"error": "thumbnail missing"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(blob)))
+            self.end_headers()
+            self.wfile.write(blob)
 
         def _handle_upload_init(self) -> None:
             query, params = self._upload_meta()
@@ -286,6 +316,47 @@ class LibraryServer:
         with self._lock:
             return db.check_token(self.conn, presented)
 
+    def thumbnail_for_file(self, source_path: str) -> str | None:
+        """Best-effort PNG thumbnail stored as a blob; None when impossible.
+
+        Requires an external engine (ffmpeg/ImageMagick); anything failing
+        — missing engine, unsupported format — yields None, never raises.
+        """
+        out = ""
+        try:
+            fd, out = tempfile.mkstemp(prefix="thumb-",
+                                       suffix=".png",
+                                       dir=self.uploads_dir)
+            os.close(fd)
+            _render_thumbnail(source_path, out)
+            with open(out, "rb") as handle:
+                digest = blobs.put_stream(self.store_root, handle)
+        except Exception:
+            return None
+        finally:
+            if out:
+                try:
+                    os.unlink(out)
+                except OSError:
+                    pass
+        return digest
+
+    def thumbnail_for_bytes(self, data: bytes, name_hint: str) -> str | None:
+        """Like :meth:`thumbnail_for_file` for in-memory uploads."""
+        _fd, src = tempfile.mkstemp(
+            prefix="upload-",
+            suffix=os.path.splitext(name_hint)[1][:8] or ".bin",
+            dir=self.uploads_dir)
+        try:
+            with open(src, "wb") as handle:
+                handle.write(data)
+            return self.thumbnail_for_file(src)
+        finally:
+            try:
+                os.unlink(src)
+            except OSError:
+                pass
+
     def list_assets(self, **filters) -> list:
         """Thread-safe :func:`library.db.list_assets`."""
         with self._lock:
@@ -385,22 +456,27 @@ class LibraryServer:
             shutil.rmtree(session, ignore_errors=True)
 
     def complete_upload(self, upload_id: str) -> dict:
-        """Assemble, store and index; returns the asset record."""
+        """Assemble, store, index (+ best-effort thumbnail); returns the asset."""
         with self._lock:
             session, path = self._session_paths(upload_id)
             meta = self._read_meta(session)
             size = os.path.getsize(path)
-            with open(path, "rb") as stream:
-                digest = blobs.put_stream(self.store_root, stream)
+        # Assemble outside the lock: session paths are per-upload, and
+        # thumbnailing shells out to ffmpeg (slow). The DB write re-locks.
+        with open(path, "rb") as stream:
+            digest = blobs.put_stream(self.store_root, stream)
+        thumb = self.thumbnail_for_file(path)
+        with self._lock:
             asset_id = db.add_asset(
                 self.conn, name=meta.get("name", "upload.bin"),
                 blob_sha256=digest, size_bytes=size,
                 kind=meta.get("kind", "raw"),
                 godot_importer=meta.get("importer"),
                 params=meta.get("params") or {},
-                tags=meta.get("tags") or [])
+                tags=meta.get("tags") or [],
+                thumbnail_sha256=thumb or "")
             shutil.rmtree(session, ignore_errors=True)
-            return {"id": asset_id, "blob_sha256": digest, "size": size}
+        return {"id": asset_id, "blob_sha256": digest, "size": size}
 
     def serve_forever(self, host: str = "127.0.0.1", port: int = 0) -> None:
         """Block serving; ``port=0`` picks an ephemeral port (see .port)."""

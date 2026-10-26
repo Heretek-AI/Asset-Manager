@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS assets(
  godot_importer TEXT,
  params_json TEXT NOT NULL DEFAULT '{}',
  tags_json TEXT NOT NULL DEFAULT '[]',
- created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+ created_at TEXT NOT NULL DEFAULT (datetime('now')),
+ thumbnail_sha256 TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(kind);
 CREATE TABLE IF NOT EXISTS api_tokens(
  token_sha256 TEXT PRIMARY KEY,
@@ -40,7 +40,17 @@ def open_db(path: str | Path, *,
     conn = sqlite3.connect(str(path), check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring older databases up to the current schema (additive only)."""
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(assets)")]
+    if "thumbnail_sha256" not in cols:
+        conn.execute("ALTER TABLE assets ADD COLUMN"
+                     " thumbnail_sha256 TEXT NOT NULL DEFAULT ''")
+        conn.commit()
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
@@ -54,6 +64,7 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "params": json.loads(row["params_json"]),
         "tags": json.loads(row["tags_json"]),
         "created_at": row["created_at"],
+        "thumbnail_sha256": row["thumbnail_sha256"] or None,
     }
 
 
@@ -61,15 +72,17 @@ def add_asset(conn: sqlite3.Connection, *, name: str, blob_sha256: str,
               size_bytes: int, kind: str = "raw",
               godot_importer: str | None = None,
               params: dict | None = None,
-              tags: list | None = None) -> int:
+              tags: list | None = None,
+              thumbnail_sha256: str = "") -> int:
     """Insert one asset row; returns its id."""
-    placeholders = ",".join(["?"] * 7)
+    placeholders = ",".join(["?"] * 8)
     cur = conn.execute(
         "INSERT INTO assets(name, blob_sha256, size_bytes, kind,"
-        " godot_importer, params_json, tags_json)"
+        " godot_importer, params_json, tags_json, thumbnail_sha256)"
         f" VALUES ({placeholders})",
         (name, blob_sha256, size_bytes, kind, godot_importer,
-         json.dumps(params or {}), json.dumps(tags or [])))
+         json.dumps(params or {}), json.dumps(tags or []),
+         thumbnail_sha256))
     conn.commit()
     return int(cur.lastrowid)
 
