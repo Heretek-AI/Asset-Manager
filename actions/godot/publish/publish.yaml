@@ -1,0 +1,18 @@
+version: "1.0"
+action:
+  name: Publish to library
+  id: godot::publish-to-library
+  version: 1
+  author: Heretek-AI
+  category: godot
+  type: python
+  description: Uploads selected files to the self-hosted asset library (import settings travel with each file).
+  script: publish.py
+  inputs:
+    server: ""
+    token: ""
+  register:
+    file:
+      enable: true
+    folder:
+      enable: true

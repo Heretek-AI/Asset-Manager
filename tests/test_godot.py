@@ -121,7 +121,8 @@ def test_godot_action_manifests_discovered():
     assert not errors
     ids = {m.manifest_id for m in found}
     assert {"godot::import-asset", "godot::reimport",
-            "godot::open-project", "godot::set-preset"} <= ids
+            "godot::open-project", "godot::set-preset",
+            "godot::publish-to-library"} <= ids
 
 
 def test_import_action_dispatch(tmp_path, capsys):
@@ -358,3 +359,55 @@ def test_live_set_preset_survives_reimport(tmp_path):
         capture_output=True, text=True, timeout=300)
     assert second.returncode == 0, second.stderr[-2000:]
     assert read_import(import_path)["params"]["compress/lossy_quality"] == 0.25
+
+
+def test_describe_for_library_with_import_sidecar(tmp_path):
+    from assetmgr.godot import describe_for_library
+    root = make_project(tmp_path)
+    asset = os.path.join(root, "hero.png")
+    with open(asset, "w") as handle:
+        handle.write("x")
+    with open(asset + ".import", "w", encoding="utf-8") as handle:
+        handle.write(REAL_TEXTURE_IMPORT)
+    described = describe_for_library(asset)
+    assert described["importer"] == "texture"
+    assert described["kind"] == "texture"
+    assert described["params"]["compress/mode"] == 0
+
+
+def test_describe_for_library_suffix_fallback(tmp_path):
+    from assetmgr.godot import describe_for_library
+    root = make_project(tmp_path)
+    asset = os.path.join(root, "click.wav")
+    with open(asset, "w") as handle:
+        handle.write("x")
+    described = describe_for_library(asset)
+    assert described["kind"] == "audio"
+    assert described["importer"] is None
+    assert described["params"] == {}
+
+
+def test_publish_action_dispatch(tmp_path, capsys, monkeypatch):
+    from test_library_server import TOKEN, start_server
+    _, base = start_server(tmp_path / "srv")
+    root = make_project(tmp_path)
+    asset = os.path.join(root, "hero.png")
+    with open(asset, "w") as handle:
+        handle.write("png-bytes")
+    with open(asset + ".import", "w", encoding="utf-8") as handle:
+        handle.write(REAL_TEXTURE_IMPORT)
+    found, _ = discover(GODOT_ACTIONS)
+    action = next(m for m in found
+                  if m.manifest_id == "godot::publish-to-library")
+    monkeypatch.delenv("ASSETMGR_LIBRARY_URL", raising=False)
+    monkeypatch.delenv("ASSETMGR_LIBRARY_TOKEN", raising=False)
+    assert run_action(action, path=asset,
+                      extra_inputs={"server": base, "token": TOKEN},
+                      context_overrides={"project_path": root}) == 0
+    out = capsys.readouterr().out
+    assert "Published" in out and "asset 1" in out
+    from library.client import pull
+    dest = os.path.join(str(tmp_path), "fetched.png")
+    pull(base, TOKEN, 1, dest)
+    with open(dest, "rb") as handle:
+        assert handle.read() == b"png-bytes"

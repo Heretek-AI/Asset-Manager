@@ -407,6 +407,38 @@ def known_importer_params(importer: str) -> frozenset[str] | None:
     return IMPORTER_PARAMS.get(importer)
 
 
+_SUFFIX_KINDS = {
+    ".png": "texture", ".jpg": "texture", ".jpeg": "texture",
+    ".svg": "texture", ".webp": "texture", ".exr": "texture",
+    ".tga": "texture", ".bmp": "texture",
+    ".wav": "audio", ".ogg": "audio", ".mp3": "audio",
+    ".glb": "model", ".gltf": "model", ".obj": "model",
+    ".fbx": "model", ".dae": "model",
+    ".ttf": "font", ".otf": "font", ".woff2": "font",
+    ".gd": "script", ".gdshader": "shader", ".tscn": "scene",
+}
+
+
+def describe_for_library(asset_path: str) -> dict[str, Any]:
+    """Metadata for publishing *asset_path* to the library.
+
+    Prefers the ``*.import`` sidecar (importer + params travel with the
+    file); falls back to a suffix-based kind with no importer or params.
+    """
+    sidecar = asset_path + ".import"
+    if os.path.isfile(sidecar):
+        summary = import_summary(read_import(sidecar))
+        importer = summary.get("importer")
+        return {
+            "kind": importer if isinstance(importer, str) else "raw",
+            "importer": importer,
+            "params": summary.get("params") or {},
+        }
+    suffix = os.path.splitext(asset_path)[1].lower()
+    return {"kind": _SUFFIX_KINDS.get(suffix, "raw"),
+            "importer": None, "params": {}}
+
+
 def validate_import_params(importer: str, params: dict) -> list[str]:
     """Keys in *params* the importer does not declare.
 
