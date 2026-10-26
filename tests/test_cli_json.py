@@ -175,6 +175,25 @@ def test_library_push_needs_endpoint(tmp_path, capsys):
     assert "server" in payload["error"]
 
 
+def test_library_push_chunked_roundtrip(tmp_path, capsys):
+    from test_library_server import TOKEN, start_server
+    _, base = start_server(tmp_path / "srv")
+    source = tmp_path / "big.bin"
+    source.write_bytes(b"q" * 100)
+    code, payload = _run_json(
+        capsys, "library-push", str(source), "--server", base,
+        "--token", TOKEN, "--chunked", "--chunk-size", "7",
+        "--kind", "raw")
+    assert code == 0
+    assert payload.get("chunked") is True
+    dest = str(tmp_path / "back.bin")
+    code, pulled = _run_json(capsys, "library-pull", str(payload["id"]),
+                             "--out", dest, "--server", base,
+                             "--token", TOKEN)
+    assert code == 0 and pulled["size"] == 100
+    assert open(dest, "rb").read() == b"q" * 100
+
+
 def test_library_token_lifecycle_against_server(tmp_path, capsys):
     from test_library_server import start_server
     db = str(tmp_path / "srv" / "lib.db")

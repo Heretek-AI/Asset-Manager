@@ -22,7 +22,12 @@ The API is token-authenticated (`Authorization: Bearer <token>`):
 
 The same operations exist offline-first on the CLI:
 `assetmgr library-init|library-push|library-pull` (see `docs/API.md`).
-Uploads are capped at 2 GiB (`MAX_UPLOAD_BYTES`); no chunked upload yet.
+Uploads are capped at 2 GiB (`MAX_UPLOAD_BYTES`); for anything large use
+the session protocol — the CLI switches automatically above 64 MiB
+(`--chunk-above BYTES`), or force it with `library-push --chunked
+[--chunk-size BYTES]`. Sessions stream in 8 MiB blocks (the server never
+holds a whole file in RAM), each attempt gets a fresh session id, and
+abandoned sessions are swept on server start.
 
 ## Connect Godot
 

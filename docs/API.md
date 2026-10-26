@@ -75,6 +75,7 @@ asset inventory) · `thumbnail SRC [--out PNG]` (exit 3 = no engine) ·
 `library-init DIR` · `library-push FILE --server URL --token T [--name N]
 [--kind K] [--importer I] [--params JSON] [--tags a,b]` ·
 `library-pull ID --out PATH --server URL --token T` ·
-`library-token-create NAME [--db DB]` (prints once) ·
+`library-token-create NAME [--db PATH]` (prints once) ·
 `library-token-list` · `library-token-revoke NAME`
 (server/token also via `ASSETMGR_LIBRARY_URL` / `ASSETMGR_LIBRARY_TOKEN`).
+Files above 64 MiB (or `--chunked`) stream via resumable upload sessions.

@@ -236,10 +236,12 @@ def _cmd_library_push(args: argparse.Namespace) -> int:
     else:
         params = {}
     tags = [t for t in (args.tags or "").split(",") if t]
+    chunk_above = 0 if args.chunked else args.chunk_above
     try:
         result = push(server, token, args.file, name=args.name,
                       kind=args.kind, importer=args.importer,
-                      params=params, tags=tags)
+                      params=params, tags=tags,
+                      chunk_size=args.chunk_size, chunk_above=chunk_above)
     except LibraryError as exc:
         return _die(args, str(exc), 1)
     _emit(args, f"uploaded as asset {result['id']}", result)
@@ -393,6 +395,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="import params as a JSON object")
     p.add_argument("--tags", default="",
                    help="comma-separated tags")
+    p.add_argument("--chunked", action="store_true",
+                   help="force the resumable session protocol")
+    p.add_argument("--chunk-size", type=int, default=8 << 20,
+                   help="session block size in bytes")
+    p.add_argument("--chunk-above", type=int, default=64 << 20,
+                   help="auto-switch to sessions above this file size")
     _add_json(p)
     p.set_defaults(func=_cmd_library_push)
 
