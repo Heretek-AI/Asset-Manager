@@ -225,6 +225,145 @@ def read_import(import_path: str) -> dict[str, dict[str, Any]]:
         return parse_godot_config(handle.read())
 
 
+def _escape_godot_string(text: str) -> str:
+    """Escape a string for Godot ConfigFile one-line form."""
+    out: list[str] = []
+    for char in text:
+        if char == "\\":
+            out.append("\\\\")
+        elif char == '"':
+            out.append('\\"')
+        elif char == "\n":
+            out.append("\\n")
+        elif char == "\t":
+            out.append("\\t")
+        elif char == "\r":
+            out.append("\\r")
+        elif ord(char) < 0x20:
+            out.append(f"\\u{ord(char):04x}")
+        else:
+            out.append(char)
+    return "".join(out)
+
+
+def format_godot_value(value: object) -> str:
+    """Serialize a Python value to Godot ConfigFile one-line form."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return repr(value)
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(format_godot_value(item) for item in value) + "]"
+    return f'"{_escape_godot_string(str(value))}"'
+
+
+def _split_line_ending(line: str) -> tuple[str, str]:
+    """Split a kept-ends line into ``(content, ending)``."""
+    if line.endswith("\r\n"):
+        return line[:-2], "\r\n"
+    if line.endswith("\n") or line.endswith("\r"):
+        return line[:-1], line[-1:]
+    return line, ""
+
+
+def set_import_params(import_path: str, params: dict[str, object]) -> list[str]:
+    """Update keys in the ``[params]`` section of a ``*.import`` file.
+
+    Every other byte is preserved: comments, blank lines, section order,
+    key order and unrelated values are untouched; only targeted key lines
+    change, and keys missing from ``[params]`` are appended at its end
+    (a missing ``[params]`` section is appended at end of file).
+
+    Returns the keys that were written.
+    """
+    with open(import_path, encoding="utf-8", newline="") as handle:
+        text = handle.read()
+    parts = [_split_line_ending(line)
+             for line in text.splitlines(keepends=True)]
+
+    section = ""
+    pending: list | None = None  # [key, start line, end line (excl.)]
+    spans: dict[str, list[tuple[int, int]]] = {}
+    header_idx: int | None = None
+    end_idx: int | None = None
+
+    def _flush() -> None:
+        nonlocal pending
+        if pending is not None:
+            spans.setdefault(pending[0], []).append((pending[1], pending[2]))
+            pending = None
+
+    for index, (content, _ending) in enumerate(parts):
+        stripped = content.strip()
+        section_match = _SECTION_RE.match(stripped) if stripped else None
+        if section_match:
+            _flush()
+            section = section_match.group(1)
+            if section == "params":
+                if header_idx is None:
+                    header_idx = index
+            elif header_idx is not None and end_idx is None:
+                end_idx = index
+            continue
+        if not stripped or stripped.startswith(";"):
+            continue
+        if section and _KEY_RE.match(stripped):
+            _flush()
+            if section == "params":
+                pending = [stripped.partition("=")[0].strip(),
+                           index, index + 1]
+            continue
+        if pending is not None:
+            pending[2] = index + 1
+    _flush()
+    if end_idx is None:
+        end_idx = len(parts)
+
+    if not params:
+        return []
+
+    rows = [list(part) for part in parts]
+    removals: set[int] = set()
+    if header_idx is None:
+        if rows == [["", ""]]:
+            rows = []
+        elif rows and rows[-1][1] == "":
+            rows[-1][1] = "\n"
+        header_idx = len(rows)
+        rows.append(["[params]", "\n"])
+        end_idx = len(rows)
+    ending = "\r\n" if any(line_ending == "\r\n"
+                            for _, line_ending in rows) else "\n"
+    if rows and rows[-1][1] == "":
+        rows[-1][1] = ending
+    insert_at = end_idx
+    while insert_at > header_idx + 1 and rows[insert_at - 1][0] == "":
+        insert_at -= 1  # keep the block's trailing blank line last
+    for key, value in params.items():
+        updated = f"{key}={format_godot_value(value)}"
+        if key in spans:
+            for start, end in spans[key]:
+                rows[start] = [updated, rows[start][1] or "\n"]
+                removals.update(range(start + 1, end))
+        else:
+            rows.insert(insert_at, [updated, ending])
+            for other_spans in spans.values():
+                for pos, (start, end) in enumerate(other_spans):
+                    if start >= insert_at:
+                        other_spans[pos] = (start + 1, end + 1)
+            removals = {i + 1 if i >= insert_at else i for i in removals}
+            insert_at += 1
+
+    kept = [content + line_ending
+            for i, (content, line_ending) in enumerate(rows)
+            if i not in removals]
+    with open(import_path, "w", encoding="utf-8", newline="") as handle:
+        handle.write("".join(kept))
+    return list(params)
+
+
 def import_summary(parsed: dict[str, dict[str, Any]]) -> dict[str, object]:
     """Condense a parsed ``*.import`` to importer/type/uid/files/params."""
     remap = parsed.get("remap", {})

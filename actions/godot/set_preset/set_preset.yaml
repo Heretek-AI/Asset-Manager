@@ -1,0 +1,18 @@
+version: "1.0"
+action:
+  name: Set Godot import preset
+  id: godot::set-preset
+  version: 1
+  author: Heretek-AI
+  category: godot
+  type: python
+  description: Updates [params] keys in the selected asset's *.import sidecar (e.g. compress/lossy_quality), preserving everything else byte-for-byte. Run godot::reimport afterwards to refresh the editor cache.
+  script: set_preset.py
+  inputs:
+    target: ""
+    params: "compress/mode=1\ncompress/lossy_quality=0.9"
+  register:
+    file:
+      enable: true
+    folder:
+      enable: true

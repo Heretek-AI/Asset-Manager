@@ -12,7 +12,7 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/assetmgrd .
 FROM debian:trixie-slim
 ARG GODOT_VERSION=4.3-stable
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 python3-yaml git ca-certificates curl unzip \
+  && apt-get install -y --no-install-recommends python3 python3-yaml git ca-certificates curl unzip ffmpeg \
   && rm -rf /var/lib/apt/lists/* \
   && curl -sL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip" \
   && unzip -q /tmp/godot.zip -d /tmp/godot-unzip \

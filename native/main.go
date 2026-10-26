@@ -185,6 +185,24 @@ func (s *Server) routes() *http.ServeMux {
 		writeRaw(w, http.StatusOK, raw)
 	})
 
+	mux.HandleFunc("GET /api/scan", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			writeErr(w, http.StatusBadRequest, "path is required")
+			return
+		}
+		raw, code, err := s.cli("project-scan", path)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if code != 0 {
+			writeRaw(w, http.StatusNotFound, raw)
+			return
+		}
+		writeRaw(w, http.StatusOK, raw)
+	})
+
 	sub, err := fs.Sub(webFS, "web")
 	if err != nil {
 		log.Fatalf("embedded web UI missing: %v", err)

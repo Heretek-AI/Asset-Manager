@@ -18,6 +18,7 @@ button { cursor: pointer; } button:hover { background: #2c3138; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 pre { background: #0c0e11; padding: 12px; border-radius: 6px; overflow: auto; }
 .muted { color: #999; }
+.badge { display: inline-block; background: #24344d; border: 1px solid #3a5a8c; border-radius: 10px; padding: 1px 8px; font-size: 0.85em; }
 </style>
 </head>
 <body>
@@ -38,6 +39,14 @@ pre { background: #0c0e11; padding: 12px; border-radius: 6px; overflow: auto; }
   <input id="projname" placeholder="name" size="16">
   <button onclick="initProject()">Init project</button>
 </div>
+
+<h2>Project browser</h2>
+<div class="row">
+  <input id="scanpath" placeholder="/path/to/godot/project" size="34">
+  <button onclick="scanProject()">Scan</button>
+</div>
+<table><thead><tr><th>Path</th><th>Size</th><th>Import</th><th>Details</th></tr></thead>
+<tbody id="scanrows"><tr><td colspan="4" class="muted">No scan yet.</td></tr></tbody></table>
 
 <h2>Status</h2>
 <div class="row">
@@ -94,6 +103,48 @@ async function showStatus() {
   const path = document.getElementById('statuspath').value;
   const {status, body} = await api('/api/status?path=' + encodeURIComponent(path));
   say({http: status, ...body});
+}
+async function scanProject() {
+  const path = document.getElementById('scanpath').value;
+  const {status, body} = await api('/api/scan?path=' + encodeURIComponent(path));
+  if (status !== 200) { say({http: status, ...body}); return; }
+  const tb = document.getElementById('scanrows');
+  tb.innerHTML = '';
+  for (const a of body.assets) {
+    const tr = document.createElement('tr');
+    const pathTd = document.createElement('td');
+    pathTd.textContent = a.path;
+    const sizeTd = document.createElement('td');
+    sizeTd.textContent = a.size_bytes;
+    const impTd = document.createElement('td');
+    if (a.has_import && a.import && a.import.importer) {
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = a.import.importer;
+      impTd.appendChild(badge);
+    } else {
+      impTd.innerHTML = '<span class="muted">raw</span>';
+    }
+    const detTd = document.createElement('td');
+    detTd.textContent = detailText(a);
+    detTd.title = JSON.stringify({uid: a.uid, params: a.import && a.import.params,
+      attributes: a.attributes}, null, 2);
+    tr.append(pathTd, sizeTd, impTd, detTd);
+    tb.appendChild(tr);
+  }
+  if (!body.assets.length) {
+    tb.innerHTML = '<tr><td colspan="4" class="muted">No assets found.</td></tr>';
+  }
+  say({project: body.project_name, root: body.root, assets: body.assets.length});
+}
+function detailText(a) {
+  const bits = [];
+  if (a.import && a.import.type) bits.push(a.import.type);
+  if (a.import && a.import.params) bits.push(Object.keys(a.import.params).length + ' param(s)');
+  if (a.uid) bits.push(a.uid);
+  const keys = a.attributes ? Object.keys(a.attributes) : [];
+  if (keys.length) bits.push('meta: ' + keys.join(', '));
+  return bits.join(' · ') || '—';
 }
 fetch('/api/info').then(r => r.json()).then(i => {
   document.getElementById('ver').textContent = 'v' + i.version + ' · ' + i.mode;

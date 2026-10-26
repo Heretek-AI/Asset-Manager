@@ -128,3 +128,69 @@ func TestProjectInitRequiresFields(t *testing.T) {
 		t.Fatalf("expected 400, got %d", code)
 	}
 }
+
+func makeGodotProject(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "project.godot"),
+		[]byte("config_version=5\n\n[application]\n\nconfig/name=\"Scan Game\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "art"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "art", "hero.png"),
+		[]byte("png-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "art", "hero.png.import"),
+		[]byte("[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func TestScan(t *testing.T) {
+	s := testServer(t)
+	project := makeGodotProject(t)
+	plain := t.TempDir()
+
+	tests := []struct {
+		name     string
+		query    string
+		wantCode int
+	}{
+		{"valid project", project, 200},
+		{"not a godot project", plain, 404},
+		{"missing path", "", 400},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			code, body := get(t, s, "/api/scan?path="+tc.query)
+			if code != tc.wantCode {
+				t.Fatalf("expected %d, got %d (%v)", tc.wantCode, code, body)
+			}
+			if tc.wantCode != 200 {
+				return
+			}
+			assets, ok := body["assets"].([]any)
+			if !ok || len(assets) == 0 {
+				t.Fatalf("expected assets, got %v", body)
+			}
+			paths := map[string]bool{}
+			for _, a := range assets {
+				entry := a.(map[string]any)
+				paths[entry["path"].(string)] = true
+				if entry["path"] == "res://art/hero.png" && entry["has_import"] != true {
+					t.Fatalf("hero.png should report has_import: %v", entry)
+				}
+			}
+			if !paths["res://art/hero.png"] {
+				t.Fatalf("hero.png missing: %v", paths)
+			}
+			if body["project_name"] != "Scan Game" {
+				t.Fatalf("bad project_name: %v", body)
+			}
+		})
+	}
+}

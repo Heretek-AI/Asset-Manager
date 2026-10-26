@@ -19,6 +19,7 @@ from assetmgr.godot import (
     parse_godot_config,
     read_import,
     read_uid,
+    set_import_params,
 )
 from assetmgr.host import run_action
 
@@ -118,7 +119,7 @@ def test_godot_action_manifests_discovered():
     assert not errors
     ids = {m.manifest_id for m in found}
     assert {"godot::import-asset", "godot::reimport",
-            "godot::open-project"} <= ids
+            "godot::open-project", "godot::set-preset"} <= ids
 
 
 def test_import_action_dispatch(tmp_path, capsys):
@@ -228,3 +229,91 @@ def test_list_and_read_import_files(tmp_path):
         handle.write(REAL_TEXTURE_IMPORT)
     assert list_import_files(root) == [imp]
     assert read_import(imp)["remap"]["importer"] == "texture"
+
+
+PRESET_IMPORT = """\
+; texture preset, keep me
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+metadata={
+"vram_texture": false
+}
+
+[deps]
+
+source_file="res://hero.png"
+
+[params]
+
+compress/mode=0
+compress/lossy_quality=0.7
+process/fix_alpha_border=true
+roughness/src_normal=""
+"""
+
+
+def test_set_import_params_roundtrip_fidelity(tmp_path):
+    imp = tmp_path / "hero.png.import"
+    imp.write_text(PRESET_IMPORT, encoding="utf-8")
+    written = set_import_params(str(imp), {"compress/lossy_quality": 0.25})
+    assert written == ["compress/lossy_quality"]
+    before, after = PRESET_IMPORT.splitlines(), imp.read_text().splitlines()
+    assert len(before) == len(after)
+    diffs = [(i, old, new) for i, (old, new)
+             in enumerate(zip(before, after)) if old != new]
+    assert diffs == [(16, "compress/lossy_quality=0.7",
+                      "compress/lossy_quality=0.25")]
+    params = read_import(str(imp))["params"]
+    assert params["compress/lossy_quality"] == 0.25
+    # value formatting matches Godot one-line form
+    set_import_params(str(imp), {"compress/mode": 2,
+                                 "process/fix_alpha_border": False,
+                                 "roughness/src_normal": "a,b"})
+    params = read_import(str(imp))["params"]
+    assert params["compress/mode"] == 2
+    assert params["process/fix_alpha_border"] is False
+    assert params["roughness/src_normal"] == "a,b"
+    text = imp.read_text()
+    assert "roughness/src_normal=\"a,b\"" in text
+    assert "; texture preset, keep me" in text
+    assert '"vram_texture": false' in text  # multiline remap dict untouched
+
+
+def test_set_import_params_appends_missing_key(tmp_path):
+    imp = tmp_path / "hero.png.import"
+    imp.write_text(PRESET_IMPORT + "\n[other]\n\nx=1\n", encoding="utf-8")
+    set_import_params(str(imp), {"process/hdr_as_srgb": True})
+    # the key lands at the end of [params], ahead of its trailing blank line
+    assert imp.read_text() == (
+        PRESET_IMPORT.rstrip("\n") + "\nprocess/hdr_as_srgb=true\n"
+        + "\n[other]\n\nx=1\n")
+    assert read_import(str(imp))["params"]["process/hdr_as_srgb"] is True
+
+
+def test_live_set_preset_survives_reimport(tmp_path):
+    godot = shutil.which("godot")
+    if not godot:
+        pytest.skip("no godot binary on PATH")
+    assert godot is not None
+    root = make_project(tmp_path)
+    asset = os.path.join(root, "hero.png")
+    with open(asset, "wb") as handle:
+        import base64
+        handle.write(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
+    first = subprocess.run(
+        [godot, "--headless", "--path", root, "--import"],
+        capture_output=True, text=True, timeout=300)
+    assert first.returncode == 0, first.stderr[-2000:]
+    import_path = asset + ".import"
+    assert os.path.isfile(import_path)
+    assert "params" in read_import(import_path)
+    set_import_params(import_path, {"compress/lossy_quality": 0.25})
+    assert read_import(import_path)["params"]["compress/lossy_quality"] == 0.25
+    second = subprocess.run(
+        [godot, "--headless", "--path", root, "--import"],
+        capture_output=True, text=True, timeout=300)
+    assert second.returncode == 0, second.stderr[-2000:]
+    assert read_import(import_path)["params"]["compress/lossy_quality"] == 0.25

@@ -16,7 +16,9 @@ from contextlib import redirect_stdout
 
 from assetmgr import __version__
 from assetmgr.actions import discover
+from assetmgr.godot import find_godot_project_root, get_project_name
 from assetmgr.host import DispatchError, run_action
+from assetmgr.scan import scan_project
 from assetmgr.store import find_project_root, init_project
 
 
@@ -74,6 +76,27 @@ def _cmd_info(args: argparse.Namespace) -> int:
 def _cmd_project_init(args: argparse.Namespace) -> int:
     marker = init_project(args.directory, args.name, force=args.force)
     _emit(args, f"project initialised: {marker}", {"marker": marker})
+    return 0
+
+
+def _cmd_project_scan(args: argparse.Namespace) -> int:
+    start = os.path.abspath(args.root)
+    project_root = find_godot_project_root(start)
+    if project_root is None:
+        if args.json:
+            print(json.dumps({"root": start, "error": "not a godot project"}))
+        else:
+            print(f"not a godot project: {start}", file=sys.stderr)
+        return 1
+    assets = scan_project(project_root)
+    if args.json:
+        print(json.dumps({"root": project_root,
+                          "project_name": get_project_name(project_root),
+                          "assets": assets}))
+    else:
+        for asset in assets:
+            print(f"{asset['path']}  {asset['size_bytes']} bytes")
+        print(f"{len(assets)} asset(s) in {project_root}")
     return 0
 
 
@@ -171,6 +194,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true")
     _add_json(p)
     p.set_defaults(func=_cmd_project_init)
+
+    p = sub.add_parser("project-scan", help="scan a Godot project for assets")
+    p.add_argument("root", help="project root (or anything inside it)")
+    _add_json(p)
+    p.set_defaults(func=_cmd_project_scan)
 
     p = sub.add_parser("run", help="run one action by id")
     p.add_argument("action_id")

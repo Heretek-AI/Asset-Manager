@@ -119,7 +119,7 @@ def generate_thumbnail(source: str, destination: str) -> str:
             continue
         import subprocess
 
-        result = subprocess.run(args, capture_output=True, text=True)
+        result = subprocess.run([tool, *args], capture_output=True, text=True)
         if result.returncode == 0 and os.path.exists(destination):
             return destination
         raise RuntimeError(f"{tool} failed: {result.stderr.strip()[:300]}")
