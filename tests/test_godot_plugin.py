@@ -211,3 +211,88 @@ def test_full_loop_server_to_imported(tmp_path, godot_bin):
     got = list((tmp_path / "plugproj").rglob("*.ctex"))
     assert got, "no imported output produced"
     assert os.path.isfile(os.path.join(root, "hero.png.import"))
+
+
+THUMB_PROBE_GD = """\
+extends SceneTree
+
+var _panel
+var _phase := 0
+var _frames := 0
+var _base := ""
+var _token := ""
+var _want_id := 0
+
+
+func _initialize() -> void:
+\tvar args := OS.get_cmdline_user_args()
+\t_base = str(args[0])
+\t_token = str(args[1])
+\t_want_id = int(args[2])
+\t_panel = load("res://addons/asset_library/asset_dock.tscn").instantiate()
+\troot.add_child(_panel)
+
+
+func _process(_delta: float) -> bool:
+\t_frames += 1
+\tif _frames > 900:
+\t\tprint("E2E_THUMB:timeout")
+\t\treturn true
+\tif _phase == 0:
+\t\tif _panel.get("_http") == null:
+\t\t\treturn false
+\t\t_panel.get_node("URL").text = _base
+\t\t_panel.get_node("Token").text = _token
+\t\t_panel.get_node("SearchRow/Query").text = ""
+\t\t_panel._on_search()
+\t\t_phase = 1
+\t\treturn false
+\tif _phase == 1 and _panel._items.size() > 0:
+\t\tvar first: Dictionary = _panel._items[0]
+\t\tif int(first.get("id", -1)) == _want_id:
+\t\t\t_panel._on_preview_index(0)
+\t\t\t_phase = 2
+\t\telse:
+\t\t\tprint("E2E_THUMB:wrong-id")
+\t\t\treturn true
+\telif _phase == 2:
+\t\tvar tex: Texture2D = _panel.get_node("Preview").texture
+\t\tif tex != null:
+\t\t\tprint("E2E_THUMB:ok %dx%d" % [tex.get_width(),
+\t\t\t\ttex.get_height()])
+\t\t\treturn true
+\treturn false
+"""
+
+
+def test_dock_shows_server_thumbnail(tmp_path, godot_bin):
+    import base64
+    import json
+    import subprocess
+    import sys
+
+    from test_library_server import TOKEN, start_server
+    _, base = start_server(tmp_path / "srv")
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+    source = tmp_path / "hero.png"
+    source.write_bytes(png)
+    root = make_plugin_project(tmp_path)
+    probe = os.path.join(root, "thumb_probe.gd")
+    with open(probe, "w", encoding="utf-8") as handle:
+        handle.write(THUMB_PROBE_GD)
+    # publish through the real CLI so importer metadata travels too
+    done = subprocess.run(
+        [sys.executable, "-m", "assetmgr.cli", "library-push",
+         str(source), "--server", base, "--token", TOKEN,
+         "--kind", "texture", "--importer", "texture", "--json"],
+        capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr[-1000:]
+    asset_id = json.loads(done.stdout)["id"]
+    run = subprocess.run(
+        [godot_bin, "--headless", "--path", root,
+         "--script", probe, "--",
+         base, TOKEN, str(asset_id)],
+        capture_output=True, text=True, timeout=120)
+    assert run.returncode == 0, run.stderr[-2000:] + run.stdout[-1000:]
+    assert "E2E_THUMB:ok" in run.stdout, run.stdout
