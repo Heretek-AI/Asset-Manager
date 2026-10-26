@@ -219,6 +219,20 @@ def test_array_with_quoted_commas():
     assert parsed["s"]["n"] == 2
 
 
+def test_font_import_value_shapes():
+    parsed = parse_godot_config(
+        "[params]\nRendering=null\nantialiasing=1\noversampling=0.0\n"
+        "fallbacks=[]\npreload=[]\nlanguage_support={}\n"
+        'scale_mesh=Vector3(1, 1, 1)\n')
+    params = parsed["params"]
+    assert params["Rendering"] == "null"  # Godot null kept verbatim
+    assert params["antialiasing"] == 1
+    assert params["oversampling"] == 0.0
+    assert params["fallbacks"] == []
+    assert params["language_support"] == "{}"
+    assert params["scale_mesh"] == "Vector3(1, 1, 1)"
+
+
 def test_quoted_key_lines_are_continuations():
     parsed = parse_godot_config('[s]\nmetadata={\n"a=b": true\n}\nnext=1\n')
     assert "a=b" in str(parsed["s"]["metadata"])
@@ -241,6 +255,12 @@ def test_known_importer_params_are_harvested_not_guessed():
     wav = known_importer_params("wav")
     assert wav is not None
     assert len(wav) == 10  # real 4.3 output
+    for importer, count in (("mp3", 5), ("oggvorbisstr", 5),
+                            ("font_data_dynamic", 20),
+                            ("wavefront_obj", 5)):
+        params = known_importer_params(importer)
+        assert params is not None
+        assert len(params) == count, (importer, params)
     assert known_importer_params("scene") is None  # unobserved: no verdict
 
 
@@ -250,6 +270,11 @@ def test_validate_import_params():
     assert validate_import_params(
         "texture", {"compress/mode": 0, "loop_mode": 1}) == ["loop_mode"]
     assert validate_import_params("wav", {"edit/loop_mode": 1}) == []
+    assert validate_import_params("mp3", {"loop": True}) == []
+    assert validate_import_params("mp3", {"compress/mode": 0}) == ["compress/mode"]
+    assert validate_import_params("font_data_dynamic", {"hinting": 2}) == []
+    assert validate_import_params(
+        "wavefront_obj", {"scale_mesh": "Vector3(1, 1, 1)"}) == []
     # unknown importer: absence of data is not evidence of a bad key
     assert validate_import_params("scene", {"anything/at_all": 1}) == []
 

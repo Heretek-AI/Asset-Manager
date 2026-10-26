@@ -399,6 +399,25 @@ IMPORTER_PARAMS: dict[str, frozenset[str]] = {
         "edit/trim", "edit/normalize", "edit/loop_mode", "edit/loop_begin",
         "edit/loop_end", "compress/mode",
     }),
+    "mp3": frozenset({
+        "loop", "loop_offset", "bpm", "beat_count", "bar_beats",
+    }),
+    "oggvorbisstr": frozenset({
+        "loop", "loop_offset", "bpm", "beat_count", "bar_beats",
+    }),
+    "font_data_dynamic": frozenset({
+        "Rendering", "antialiasing", "generate_mipmaps",
+        "disable_embedded_bitmaps", "multichannel_signed_distance_field",
+        "msdf_pixel_range", "msdf_size", "allow_system_fallback",
+        "force_autohinter", "hinting", "subpixel_positioning",
+        "oversampling", "Fallbacks", "fallbacks", "Compress", "compress",
+        "preload", "language_support", "script_support",
+        "opentype_features",
+    }),
+    "wavefront_obj": frozenset({
+        "generate_tangents", "scale_mesh", "offset_mesh", "optimize_mesh",
+        "force_disable_mesh_compression",
+    }),
 }
 
 
