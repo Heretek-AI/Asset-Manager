@@ -24,6 +24,7 @@ COPY assetmgr/ ./assetmgr/
 COPY anchorpoint/ ./anchorpoint/
 COPY apsync/ ./apsync/
 COPY actions/ ./actions/
+COPY library/ ./library/
 COPY --from=build /out/assetmgrd /usr/local/bin/assetmgrd
 ENV ASSETMGR_HOME=/app \
     ASSETMGR_ACTIONS=/app/actions

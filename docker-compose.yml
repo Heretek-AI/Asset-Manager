@@ -8,3 +8,18 @@ services:
     environment:
       ASSETMGR_HOME: /app
       ASSETMGR_ACTIONS: /app/actions
+
+  # Self-hosted asset library: content store + metadata + token-auth HTTP API.
+  # Token via .env (see .env.example). Data persists in library-data/.
+  library:
+    build: .
+    command: ["python3", "-m", "library", "--host", "0.0.0.0", "--port", "8081"]
+    ports:
+      - "8081:8081"
+    volumes:
+      - library-data:/app/library-data
+    environment:
+      ASSETMGR_LIBRARY_TOKEN: ${ASSETMGR_LIBRARY_TOKEN:?set in .env}
+
+volumes:
+  library-data:
