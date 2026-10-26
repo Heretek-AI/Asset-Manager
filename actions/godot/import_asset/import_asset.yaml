@@ -1,0 +1,17 @@
+version: "1.0"
+action:
+  name: Import into Godot project
+  id: godot::import-asset
+  version: 1
+  author: Heretek-AI
+  category: godot
+  type: python
+  description: Copies selected files into the Godot project's asset folder (res://). Reimport with godot::reimport afterwards.
+  script: import_asset.py
+  inputs:
+    target_folder: assets
+  register:
+    file:
+      enable: true
+    folder:
+      enable: true

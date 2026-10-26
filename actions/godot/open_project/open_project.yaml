@@ -1,0 +1,16 @@
+version: "1.0"
+action:
+  name: Open in Godot editor
+  id: godot::open-project
+  version: 1
+  author: Heretek-AI
+  category: godot
+  type: command
+  description: Opens the enclosing Godot project in the editor.
+  command: ${godot}
+  arguments: --editor ${path}
+  inputs:
+    godot: godot
+  register:
+    folder:
+      enable: true

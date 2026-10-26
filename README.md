@@ -58,6 +58,8 @@ form the binary consumes; see `docs/API.md`.
 | Path | Contents |
 |---|---|
 | `assetmgr/` | host: manifests, dispatch, project store, CLI (`--json` for machines) |
+| `assetmgr/godot.py` | Godot project adapter: discovery, ConfigFile parsing, `.uid`, import |
+| `actions/godot/` | bundled Godot actions: `godot::import-asset`, `godot::reimport`, `godot::open-project` |
 | `native/` | `assetmgrd` Go binary: web UI + JSON API over the Python host |
 | `native/web/` | browser UI (no dependencies, `fetch` against `/api/*`) |
 | `Dockerfile` / `docker-compose.yml` | Go build stage + `trixie-slim` runtime (python3, git) |

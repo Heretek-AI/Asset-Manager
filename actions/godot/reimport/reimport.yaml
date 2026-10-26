@@ -1,0 +1,15 @@
+version: "1.0"
+action:
+  name: Reimport Godot project
+  id: godot::reimport
+  version: 1
+  author: Heretek-AI
+  category: godot
+  type: python
+  description: Runs headless Godot --import on the enclosing project to refresh the editor cache.
+  script: reimport.py
+  inputs:
+    godot: godot
+  register:
+    folder:
+      enable: true

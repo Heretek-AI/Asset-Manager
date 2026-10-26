@@ -16,7 +16,8 @@ class DispatchError(RuntimeError):
 
 
 def build_context(action: ActionManifest, path: str = "",
-                  extra_inputs: dict | None = None) -> anchorpoint.Context:
+                  extra_inputs: dict | None = None,
+                  context_overrides: dict | None = None) -> anchorpoint.Context:
     path = os.path.abspath(path) if path else ""
     variables = {"path": path, "yaml_dir": action.yaml_dir}
     merged = {k: substitute_variables(str(v), variables)
@@ -24,7 +25,7 @@ def build_context(action: ActionManifest, path: str = "",
     if extra_inputs:
         merged.update(extra_inputs)
     folder, filename = (os.path.split(path) + ("",))[:2] if path else ("", "")
-    return anchorpoint.Context(
+    ctx = anchorpoint.Context(
         type=action.category,
         path=path,
         folder=folder,
@@ -38,19 +39,30 @@ def build_context(action: ActionManifest, path: str = "",
         icon=action.icon_path,
         icon_color=action.icon_color,
     )
+    for key, value in (context_overrides or {}).items():
+        if hasattr(ctx, key):
+            setattr(ctx, key, value)
+    return ctx
 
 
 def run_action(action: ActionManifest, path: str = "",
-               extra_inputs: dict | None = None) -> int:
+               extra_inputs: dict | None = None,
+               context_overrides: dict | None = None) -> int:
     """Dispatch one action; returns the process exit code (0 = ok)."""
     if action.action_type == "package":
         raise DispatchError(f"{action.manifest_id}: packages list members, they do not run")
     if action.is_placeholder:
         raise DispatchError(f"{action.manifest_id}: placeholder (script: none)")
-    ctx = build_context(action, path, extra_inputs)
+    ctx = build_context(action, path, extra_inputs, context_overrides)
     if action.action_type == "command":
-        variables = {"path": path, "yaml_dir": action.yaml_dir,
-                     "PATH": os.environ.get("PATH", "")}
+        base = {"path": path, "yaml_dir": action.yaml_dir,
+                "PATH": os.environ.get("PATH", "")}
+        merged_inputs = {k: substitute_variables(str(v), base)
+                         for k, v in action.inputs.items()}
+        if extra_inputs:
+            merged_inputs.update({k: str(v) for k, v in extra_inputs.items()})
+        variables = dict(base)
+        variables.update(merged_inputs)
         cmd = substitute_variables(action.command, variables)
         args = substitute_variables(action.arguments, variables) if action.arguments else ""
         env = dict(os.environ)
