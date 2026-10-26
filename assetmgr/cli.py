@@ -198,6 +198,77 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _library_endpoint(args: argparse.Namespace) -> tuple[str, str]:
+    server = args.server or os.environ.get("ASSETMGR_LIBRARY_URL", "")
+    token = args.token or os.environ.get("ASSETMGR_LIBRARY_TOKEN", "")
+    if not server or not token:
+        raise SystemExit("library server/token required "
+                         "(--server/--token or ASSETMGR_LIBRARY_URL/TOKEN)")
+    return server, token
+
+
+def _cmd_library_init(args: argparse.Namespace) -> int:
+    from library import db as library_db
+
+    root = os.path.abspath(args.directory)
+    os.makedirs(root, exist_ok=True)
+    db_path = os.path.join(root, "library.db")
+    library_db.open_db(db_path).close()
+    _emit(args, f"library initialised: {root}",
+          {"root": root, "db": db_path})
+    return 0
+
+
+def _cmd_library_push(args: argparse.Namespace) -> int:
+    from library.client import LibraryError, push
+
+    try:
+        server, token = _library_endpoint(args)
+    except SystemExit as exc:
+        return _die(args, str(exc), 2)
+    if args.params:
+        try:
+            params = json.loads(args.params)
+            if not isinstance(params, dict):
+                raise ValueError
+        except ValueError:
+            return _die(args, "params must be a JSON object", 2)
+    else:
+        params = {}
+    tags = [t for t in (args.tags or "").split(",") if t]
+    try:
+        result = push(server, token, args.file, name=args.name,
+                      kind=args.kind, importer=args.importer,
+                      params=params, tags=tags)
+    except LibraryError as exc:
+        return _die(args, str(exc), 1)
+    _emit(args, f"uploaded as asset {result['id']}", result)
+    return 0
+
+
+def _cmd_library_pull(args: argparse.Namespace) -> int:
+    from library.client import LibraryError, pull
+
+    try:
+        server, token = _library_endpoint(args)
+    except SystemExit as exc:
+        return _die(args, str(exc), 2)
+    try:
+        result = pull(server, token, args.asset_id, args.out)
+    except LibraryError as exc:
+        return _die(args, str(exc), 1)
+    _emit(args, f"downloaded to {result['path']}", result)
+    return 0
+
+
+def _die(args: argparse.Namespace, message: str, code: int) -> int:
+    if getattr(args, "json", False):
+        print(json.dumps({"error": message}))
+    else:
+        print(f"error: {message}", file=sys.stderr)
+    return code
+
+
 def _add_json(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true",
                         help="emit machine-readable JSON on stdout")
@@ -255,6 +326,33 @@ def build_parser() -> argparse.ArgumentParser:
                    help="destination PNG (default: <name>_thumb.png beside source)")
     _add_json(p)
     p.set_defaults(func=_cmd_thumbnail)
+
+    p = sub.add_parser("library-init", help="initialise a library store directory")
+    p.add_argument("directory")
+    _add_json(p)
+    p.set_defaults(func=_cmd_library_init)
+
+    p = sub.add_parser("library-push", help="upload a file to the library server")
+    p.add_argument("file")
+    p.add_argument("--server", default="")
+    p.add_argument("--token", default="")
+    p.add_argument("--name", default=None)
+    p.add_argument("--kind", default="raw")
+    p.add_argument("--importer", default=None)
+    p.add_argument("--params", default="",
+                   help="import params as a JSON object")
+    p.add_argument("--tags", default="",
+                   help="comma-separated tags")
+    _add_json(p)
+    p.set_defaults(func=_cmd_library_push)
+
+    p = sub.add_parser("library-pull", help="download an asset from the library server")
+    p.add_argument("asset_id", type=int)
+    p.add_argument("--out", required=True)
+    p.add_argument("--server", default="")
+    p.add_argument("--token", default="")
+    _add_json(p)
+    p.set_defaults(func=_cmd_library_pull)
     return parser
 
 

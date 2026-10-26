@@ -141,3 +141,35 @@ def test_thumbnail_json_no_engine(tmp_path, monkeypatch, capsys):
     code, payload = _run_json(capsys, "thumbnail", source)
     assert code == 3
     assert "ffmpeg" in payload["error"]
+
+
+def test_library_init_json(tmp_path, capsys):
+    code, payload = _run_json(capsys, "library-init",
+                              str(tmp_path / "lib"))
+    assert code == 0
+    assert os.path.exists(payload["db"])
+
+
+def test_library_push_pull_json(tmp_path, capsys):
+    from test_library_server import TOKEN, start_server
+    _, base = start_server(tmp_path / "srv")
+    source = _write_png(tmp_path / "hero.png")
+    code, payload = _run_json(
+        capsys, "library-push", source, "--server", base,
+        "--token", TOKEN, "--kind", "texture", "--tags", "hero,demo")
+    assert code == 0
+    assert payload["id"] == 1
+    dest = str(tmp_path / "fetched.png")
+    code, payload = _run_json(
+        capsys, "library-pull", "1", "--out", dest,
+        "--server", base, "--token", TOKEN)
+    assert code == 0
+    with open(source, "rb") as a, open(dest, "rb") as b:
+        assert a.read() == b.read()
+
+
+def test_library_push_needs_endpoint(tmp_path, capsys):
+    source = _write_png(tmp_path / "hero.png")
+    code, payload = _run_json(capsys, "library-push", source)
+    assert code == 2
+    assert "server" in payload["error"]

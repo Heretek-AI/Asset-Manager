@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -130,6 +131,8 @@ class LibraryServer:
 
     def __init__(self, store_root, db_path, token: str,
                  max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES) -> None:
+        os.makedirs(store_root, exist_ok=True)
+        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         self.store_root = store_root
         # One shared connection: handler threads are serialized by this lock.
         self.conn = db.open_db(db_path, check_same_thread=False)
