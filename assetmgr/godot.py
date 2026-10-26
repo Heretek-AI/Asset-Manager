@@ -378,3 +378,42 @@ def import_summary(parsed: dict[str, dict[str, Any]]) -> dict[str, object]:
         "dest_files": dest if isinstance(dest, list) else [dest],
         "params": parsed.get("params", {}),
     }
+
+
+#: Known ``[params]`` keys per importer, harvested from real
+#: ``godot --headless --import`` (4.3) output. Importers absent here
+#: cannot be validated — extend as more are observed, never guessed.
+IMPORTER_PARAMS: dict[str, frozenset[str]] = {
+    "texture": frozenset({
+        "compress/mode", "compress/high_quality", "compress/lossy_quality",
+        "compress/hdr_compression", "compress/normal_map",
+        "compress/channel_pack", "mipmaps/generate", "mipmaps/limit",
+        "roughness/mode", "roughness/src_normal",
+        "process/fix_alpha_border", "process/premult_alpha",
+        "process/normal_map_invert_y", "process/hdr_as_srgb",
+        "process/hdr_clamp_exposure", "process/size_limit",
+        "detect_3d/compress_to",
+    }),
+    "wav": frozenset({
+        "force/8_bit", "force/mono", "force/max_rate", "force/max_rate_hz",
+        "edit/trim", "edit/normalize", "edit/loop_mode", "edit/loop_begin",
+        "edit/loop_end", "compress/mode",
+    }),
+}
+
+
+def known_importer_params(importer: str) -> frozenset[str] | None:
+    """Allowed ``[params]`` keys for *importer*, or None if unobserved."""
+    return IMPORTER_PARAMS.get(importer)
+
+
+def validate_import_params(importer: str, params: dict) -> list[str]:
+    """Keys in *params* the importer does not declare.
+
+    Unknown importers yield no findings (absence of data is not evidence
+    of a bad key); Godot itself ignores undeclared params silently.
+    """
+    allowed = known_importer_params(importer)
+    if allowed is None:
+        return []
+    return sorted(key for key in params if key not in allowed)

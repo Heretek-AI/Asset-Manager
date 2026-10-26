@@ -14,12 +14,14 @@ from assetmgr.godot import (
     import_files_into_project,
     import_summary,
     is_godot_project,
+    known_importer_params,
     list_import_files,
     list_uid_files,
     parse_godot_config,
     read_import,
     read_uid,
     set_import_params,
+    validate_import_params,
 )
 from assetmgr.host import run_action
 
@@ -229,6 +231,45 @@ def test_list_and_read_import_files(tmp_path):
         handle.write(REAL_TEXTURE_IMPORT)
     assert list_import_files(root) == [imp]
     assert read_import(imp)["remap"]["importer"] == "texture"
+
+
+def test_known_importer_params_are_harvested_not_guessed():
+    texture = known_importer_params("texture")
+    assert texture is not None
+    assert len(texture) == 17  # real 4.3 output
+    wav = known_importer_params("wav")
+    assert wav is not None
+    assert len(wav) == 10  # real 4.3 output
+    assert known_importer_params("scene") is None  # unobserved: no verdict
+
+
+def test_validate_import_params():
+    assert validate_import_params(
+        "texture", {"compress/mode": 0, "mipmaps/generate": True}) == []
+    assert validate_import_params(
+        "texture", {"compress/mode": 0, "loop_mode": 1}) == ["loop_mode"]
+    assert validate_import_params("wav", {"edit/loop_mode": 1}) == []
+    # unknown importer: absence of data is not evidence of a bad key
+    assert validate_import_params("scene", {"anything/at_all": 1}) == []
+
+
+def test_set_preset_warns_but_applies_unknown_keys(tmp_path, capsys):
+    root = make_project(tmp_path)
+    imp = os.path.join(root, "hero.png.import")
+    with open(imp, "w", encoding="utf-8") as handle:
+        handle.write(REAL_TEXTURE_IMPORT)
+    found, _ = discover(GODOT_ACTIONS)
+    action = next(m for m in found if m.manifest_id == "godot::set-preset")
+    params = "compress/lossy_quality=0.5\nloop_mode=1"
+    assert run_action(action, path=os.path.join(root, "hero.png"),
+                      extra_inputs={"params": params},
+                      context_overrides={"project_path": root}) == 0
+    out = capsys.readouterr().out
+    assert "WARNING" in out and "loop_mode" in out
+    # applied anyway: known key updated, unknown key appended
+    reread = read_import(imp)
+    assert reread["params"]["compress/lossy_quality"] == 0.5
+    assert reread["params"]["loop_mode"] == 1
 
 
 PRESET_IMPORT = """\

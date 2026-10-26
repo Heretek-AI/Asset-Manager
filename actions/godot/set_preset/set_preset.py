@@ -7,7 +7,9 @@ import anchorpoint
 from assetmgr.godot import (
     find_godot_project_root,
     parse_godot_value,
+    read_import,
     set_import_params,
+    validate_import_params,
 )
 
 
@@ -87,7 +89,12 @@ if not params:
     raise SystemExit(1)
 
 written = set_import_params(import_path, params)
+importer = str(read_import(import_path).get("remap", {}).get("importer") or "")
+unknown = validate_import_params(importer, params) if importer else []
+note = (f" WARNING: {importer or 'unknown importer'} does not declare "
+        f"{', '.join(unknown)} (Godot will ignore them)."
+        if unknown else "")
 anchorpoint.UI().show_success(
     "Import preset updated",
     f"{len(written)} param(s) in {os.path.basename(import_path)} "
-    "(run godot::reimport to refresh the editor cache)")
+    f"(run godot::reimport to refresh the editor cache).{note}")
