@@ -115,7 +115,8 @@ async function scanProject() {
     const pathTd = document.createElement('td');
     pathTd.textContent = a.path;
     const sizeTd = document.createElement('td');
-    sizeTd.textContent = a.size_bytes;
+    sizeTd.textContent = fmtSize(a.size_bytes);
+    sizeTd.style.whiteSpace = 'nowrap';
     const impTd = document.createElement('td');
     if (a.has_import && a.import && a.import.importer) {
       const badge = document.createElement('span');
@@ -157,6 +158,11 @@ async function showThumb(root, resPath, cell, btn) {
   } finally {
     btn.disabled = false;
   }
+}
+function fmtSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
 }
 function detailText(a) {
   const bits = [];

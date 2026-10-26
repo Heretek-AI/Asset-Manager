@@ -25,6 +25,13 @@ and a **Python automation API**.
 - Server-backed collaboration (locks, channel notifications, membership) is
   an explicit boundary: those calls raise `ServerRequiredError`.
 
+## Screenshots
+
+| Actions console | Project browser |
+|---|---|
+| ![Actions console](docs/screenshots/actions-console.png) | ![Project browser](docs/screenshots/project-browser.png) |
+| Run tab, discovery + one-click actions | Scan of the demo Godot project: import badges, params, live thumbnail |
+
 ## Quick start (Python host)
 
 ```bash
